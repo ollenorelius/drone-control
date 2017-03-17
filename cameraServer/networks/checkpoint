@@ -1,0 +1,2 @@
+model_checkpoint_path: "squeeze_normal-drone.cpt"
+all_model_checkpoint_paths: "squeeze_normal-drone.cpt"
