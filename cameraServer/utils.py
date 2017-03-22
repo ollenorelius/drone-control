@@ -249,16 +249,34 @@ def delta_to_box(delta, anchor):
     Takes a delta and an anchor bounding box,
      and gives the bounding box predicted.
 
-    In: delta: [dx, dy, dw, dh]
-        anchor: [x, y, w, h]
+    In: delta: N x [dx, dy, dw, dh]
+        anchor: N x [x, y, w, h]
 
-    Out: box: x,y,w,h
+    Out: box: N x [x,y,w,h]
     """
 
-    x = anchor[0] + anchor[2]*delta[0]
-    y = anchor[1] + anchor[3]*delta[1]
+    if delta.shape == [4]:
+        delta = [delta]
+    if anchor.shape == [4]:
+        delta = [anchor]
 
-    w = anchor[2]*np.exp(delta[2])
-    h = anchor[3]*np.exp(delta[3])
+    N = delta.shape[0]
+    d = delta.shape[1]
 
-    return [x,y,w,h]
+    assert N == anchor.shape[0], "Delta count must equal anchor count supplied!"
+    assert d == 4, "Dimension 1 of deltas must equal 4! (%s)"%d
+
+
+    x = anchor[:,0] + anchor[:,2]*delta[:,0]
+    y = anchor[:,1] + anchor[:,3]*delta[:,1]
+
+    w = anchor[:,2]*np.exp(delta[:,2])
+    h = anchor[:,3]*np.exp(delta[:,3])
+
+    ret_boxes = np.zeros([N,d])
+    ret_boxes[:,0] = x
+    ret_boxes[:,1] = y
+    ret_boxes[:,2] = w
+    ret_boxes[:,3] = h
+
+    return ret_boxes
