@@ -23,7 +23,7 @@ def create_anchors(grid_size):
     assert (len(anchors), len(anchors[1])) == (p.ANCHOR_COUNT * p.GRID_SIZE**2, 4), \
      "ERROR: create_anchors made a matrix of shape %i,%i" % (len(anchors), len(anchors[1]))
 
-    return anchors
+    return np.array(anchors)
 
 def intersection(bbox, anchors):
     """
@@ -151,8 +151,7 @@ def get_stepped_slice(in_tensor, start, length):
 def delta_loss(act_tensor, deltas, masks, N_obj):
     '''
         Takes the activation volume from the squeezeDet layer, slices out the
-        deltas from position <p.OUT_CLASSES> every <stride> layers using
-        get_stepped_slice.
+        deltas from position 0 to 4*k.
         These are then unrolled into a [x*y*k, 4] list of deltas and compared to
         ground truths with a simple vector norm. The list is filtered using
         the masks, multiplying all but the main anchor at every grid point by 0.
@@ -163,17 +162,15 @@ def delta_loss(act_tensor, deltas, masks, N_obj):
 
                 masks: Binary masks indicating the anchor with
                 maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
+                N_obj: number of ground truth boxes in every image [batch,1]
 
-        Out: Float representing the average delta loss per grid point
+        Out: Float representing the average delta loss per grid point across batch
     '''
-    stride = (1+4+p.OUT_CLASSES)
     in_shape = act_tensor.get_shape().as_list()
     batch_size = in_shape[0]
     in_depth = in_shape[3]
     masks_unwrap = tf.squeeze(tf.reshape(masks, [batch_size,-1]))
 
-
-    #pred_delta = get_stepped_slice(act_tensor, p.OUT_CLASSES, 4)
     pred_delta = tf.slice(act_tensor, [0,0,0,0],[-1,-1,-1,4*p.ANCHOR_COUNT])
     tf.summary.histogram('predicted_delta', pred_delta)
     pred_delta = tf.reshape(pred_delta,
@@ -182,17 +179,30 @@ def delta_loss(act_tensor, deltas, masks, N_obj):
     diff_delta = tf.norm(deltas - pred_delta, axis=2)
     filtered_diff_delta = tf.multiply(diff_delta,tf.to_float(masks_unwrap))
 
-    delta_loss_ = tf.pow(filtered_diff_delta,2) # TODO: This should be divided by number of boxes
+    delta_loss_ = tf.pow(filtered_diff_delta,2)
     normal = batch_size
     return tf.reduce_sum(delta_loss_/N_obj)/(normal)
 
 def gamma_loss(act_tensor, gammas, masks, N_obj):
     '''
-    Gets gamma losses.
+        Takes the activation volume from the squeezeDet layer, slices out the
+        gammas from position 4*k to 5*k .
+        These are then unrolled into a [x*y*k, 1] list of gammas and compared to
+        ground truths with a simple vector norm. The list is filtered using
+        the masks, multiplying all but the main anchor at every grid point by 0.
 
-    In:
-        act_tensor: Full activation volume. [batch, gs, gs, depth]
-        gammas: Ground truth gammas. (IOUs) [batch, gs*gs*k]
+        Conj_gamma is used to punish boxes predicted that don't correspond to a
+        ground truth.
+
+        Input:  act_tensor: The entire activation volume
+                                        [batch, X, Y, stride].
+                gammas: Ground truth gammas. [batch, X*Y*ANCHOR_COUNT,1]
+
+                masks: Binary masks indicating the anchor with
+                maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
+                N_obj: number of ground truth boxes in every image [batch,1]
+
+        Out: Float representing the average gamma loss per grid point across batch
     '''
     in_shape = act_tensor.get_shape().as_list()
     batch_size = in_shape[0]
@@ -221,7 +231,23 @@ def gamma_loss(act_tensor, gammas, masks, N_obj):
     return tf.reduce_sum(gamma_loss_)/(normal)
 
 def class_loss(act_tensor, classes, masks, N_obj):
+    '''
+        Takes the activation volume from the squeezeDet layer, slices out the
+        class scores from position 5*k to the end.
+        These are then unrolled into a [x*y*k, classes] list of scores and compared to
+        ground truths using cross entropy. The list is filtered using
+        the masks, multiplying all but the main anchor at every grid point by 0.
 
+        Input:  act_tensor: The entire activation volume
+                                        [batch, X, Y, stride].
+                classes: Ground truth classes. [batch, X*Y*ANCHOR_COUNT,classes]
+
+                masks: Binary masks indicating the anchor with
+                maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
+                N_obj: number of ground truth boxes in every image [batch,1]
+
+        Out: Float representing the average gamma loss per grid point across batch
+    '''
     in_shape = act_tensor.get_shape().as_list()
     batch_size = in_shape[0]
     in_depth = in_shape[3]

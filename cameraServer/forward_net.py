@@ -73,17 +73,21 @@ class NeuralNet:
 
         box_list = []
         anchors = u.create_anchors(gs)
+
         for ib in range(batch_size):
+            boxes = u.delta_to_box(deltas[ib], anchors)
+            nms_indices = tf.image.non_max_suppression(u.trans_boxes(boxes), gammas[ib],5, iou_threshold=0.3).eval(session=self.sess)
+            selected_boxes = boxes[nms_indices]
+            selected_gamma = gammas[ib, nms_indices]
+            selected_class = class_numbers[ib, nms_indices]
             max_gamma= 0
+
             print('image %s'%ib)
-            for idx in range(gs**2):
-                ca = chosen_anchor[ib, idx]
-                if(gammas[ib,idx*k+ca] > cutoff):
-                    box = u.delta_to_box(deltas[ib,ca+idx*k,:],
-                                anchors[ca+idx*k])
-                    box_list.append(BoundingBox(u.trans_boxes(box),
-                                                gammas[ib,idx*k+ca],
-                                                class_numbers[ib,idx*k+ca]))
+
+            for i, box in enumerate(selected_boxes):
+                if selected_gamma[i] > cutoff:
+                    box_list.append(BoundingBox(u.trans_boxes(box),selected_gamma[i],selected_class[i]))
+            
         return box_list
 
 
