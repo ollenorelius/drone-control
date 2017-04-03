@@ -48,6 +48,10 @@ root.bind("<Button>", button_click_exit_mainloop)
 root.geometry('+%d+%d' % (100,100))
 root.mainloop()
 
+tkpi = ImageTk.PhotoImage(Image.new('RGB', (640,480)))
+label_image = tkinter.Label(root, image=tkpi)
+label_image.place(x=0,y=0,width=picSize[0],height=picSize[1])
+
 
 # Accept a single connection and make a file-like object out of it
 connection = server_socket.accept()[0].makefile('rwb')
@@ -82,14 +86,12 @@ try:
 
         root.geometry('%dx%d' % picSize)
         tkpi = ImageTk.PhotoImage(image.resize(picSize,Image.ANTIALIAS))
-        label_image = tkinter.Label(root, image=tkpi)
-        label_image.place(x=0,y=0,width=picSize[0],height=picSize[1])
+        label_image.configure(image=tkpi)
 
         root.update()
 
         print('Image is %dx%d' % image.size)
-        #image.verify()
-        #print('Image is verified')
+
 finally:
     connection.close()
     server_socket.close()
