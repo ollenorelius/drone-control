@@ -3,16 +3,20 @@ import picamera
 import params as p
 from PIL import Image
 import time
+<<<<<<< Updated upstream
 import io
 import numpy as np
 
 picSize = (640,480)
 
+=======
+picSize = (640,480)
+>>>>>>> Stashed changes
 nn = NeuralNet(picSize, 'squeeze_normal-drone')
 
 
 camera = picamera.PiCamera()
-camera.resolution = (640, 480)
+camera.resolution = picSize
 camera.sensor_mode = 7
 camera.shutter_speed = 10000
 # Start a preview and let the camera warm up for 2 seconds
