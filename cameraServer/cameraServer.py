@@ -5,6 +5,7 @@ from PIL import Image, ImageTk, ImageDraw, ImageFont
 import os, sys
 import tkinter
 import numpy as np
+import params as p
 
 from forward_net import NeuralNet, BoundingBox
 
@@ -78,7 +79,9 @@ try:
         image.load()
         image.verify()
 
-        bboxes = nn.run_images([np.array(image)],cutoff=0.25)
+        bboxes = nn.run_images(
+            [np.array(image.resize((p.IMAGE_SIZE,p.IMAGE_SIZE)))],
+            cutoff=0.5)
         image = image.convert('RGBA')
         mask = draw_boxes(bboxes)
 

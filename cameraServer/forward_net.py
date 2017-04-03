@@ -6,23 +6,25 @@ from PIL import Image
 from scipy import misc
 import numpy as np
 import time
-
+from tensorflow.python.platform import gfile
 
 class NeuralNet:
 
-    def __init__(self, input_size, net_name='squeeze_normal-dev'):
+    def __init__(self, input_size, net_name='squeeze_normal-drone'):
 
         k = p.ANCHOR_COUNT
         gs = p.GRID_SIZE
+        print('loading network.. ', end='')
+        folder_name = './networks/%s'%net_name
+        with gfile.FastGFile(folder_name + "/best_valid.pb",'rb') as f:
+            graph_def = tf.GraphDef()
+            graph_def.ParseFromString(f.read())
+            tf.import_graph_def(graph_def, name='')
 
-        x_input = input_size[1]
-        y_input = input_size[0]
-        input_tensor = tf.placeholder(tf.float32, shape=[None,x_input,y_input,3], name='input_images')
-        image = tf.image.resize_images(input_tensor, [256,256])
-
-        #t_activations = net.create_small_net(image)
-        t_activations = net.create_forward_net(image)
-
+        sq_graph = tf.get_default_graph()
+        self.inp_batch = sq_graph.get_tensor_by_name('Input_batching/batch:0')
+        t_activations = sq_graph.get_tensor_by_name('activation/activations:0')
+        print('Done!')
         k = p.ANCHOR_COUNT
         t_deltas = tf.slice(t_activations, [0,0,0,0], [-1,-1,-1,4*k])
         t_gammas = tf.sigmoid(tf.slice(t_activations, [0,0,0,4*k], [-1,-1,-1,k]))
@@ -31,11 +33,8 @@ class NeuralNet:
         self.all_out = [t_activations, t_deltas, t_gammas, t_classes, t_chosen_anchor]
         self.sess = tf.Session()
 
-        print('loading network.. ', end='')
 
-        saver = tf.train.Saver()
-        saver.restore(self.sess, './networks/%s.cpt'%net_name)
-        print('Done.')
+
 
 
 
@@ -58,10 +57,9 @@ class NeuralNet:
         batch_size = 1#images.shape[0]
         #assert len(images.size) == 4,\
         #    'Error in run_images: Images should be supplied as a batch of [batch, x, y, c]!'
-        input_tensor = tf.placeholder(tf.float32)
         start_time = time.time()
         activations, deltas, gammas, classes, chosen_anchor = \
-                        self.sess.run(self.all_out, feed_dict={'input_images:0': images})
+                        self.sess.run(self.all_out, feed_dict={self.inp_batch: images})
         print('Took %f seconds!'%(time.time()-start_time))
 
         gammas = np.reshape(gammas, [-1, gs**2*k])
@@ -76,7 +74,8 @@ class NeuralNet:
 
         for ib in range(batch_size):
             boxes = u.delta_to_box(deltas[ib], anchors)
-            nms_indices = tf.image.non_max_suppression(u.trans_boxes(boxes), gammas[ib],5, iou_threshold=0.3).eval(session=self.sess)
+            nms_indices = tf.image.non_max_suppression(u.trans_boxes(boxes),
+                gammas[ib],5, iou_threshold=0.1).eval(session=self.sess)
             selected_boxes = boxes[nms_indices]
             selected_gamma = gammas[ib, nms_indices]
             selected_class = class_numbers[ib, nms_indices]
@@ -87,7 +86,7 @@ class NeuralNet:
             for i, box in enumerate(selected_boxes):
                 if selected_gamma[i] > cutoff:
                     box_list.append(BoundingBox(u.trans_boxes(box),selected_gamma[i],selected_class[i]))
-            
+
         return box_list
 
 
