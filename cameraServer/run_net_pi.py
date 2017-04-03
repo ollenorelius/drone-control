@@ -3,6 +3,10 @@ import picamera
 import params as p
 from PIL import Image
 import time
+import io
+import numpy as np
+
+picSize = (640,480)
 
 nn = NeuralNet(picSize, 'squeeze_normal-drone')
 
@@ -15,10 +19,11 @@ camera.shutter_speed = 10000
 #camera.start_preview()
 time.sleep(1)
 
+stream = io.BytesIO()
 start = time.time()
 for foo in camera.capture_continuous(stream, 'jpeg', True):
-    image_stream.seek(0)
-    image = Image.open(image_stream)
+    stream.seek(0)
+    image = Image.open(stream)
     image.load()
     image.verify()
     bboxes = nn.run_images(
