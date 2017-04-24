@@ -36,6 +36,7 @@ def draw_boxes(boxes):
 
 # Start a socket listening for connections on 0.0.0.0:8000 (0.0.0.0 means
 # all interfaces)
+nn = NeuralNet(picSize, 'squeeze_tiny-drone_big_DO05_run2')
 server_socket = socket.socket()
 #server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.bind(('0.0.0.0', 8000))
@@ -58,7 +59,7 @@ label_image.place(x=0,y=0,width=picSize[0],height=picSize[1])
 connection = server_socket.accept()[0].makefile('rwb')
 
 
-nn = NeuralNet(picSize, 'squeeze_normal-drone')
+
 try:
     while True:
         connection.write(b'a')
@@ -78,10 +79,11 @@ try:
         image = Image.open(image_stream)
         image.load()
         image.verify()
+        image = image.transpose(Image.FLIP_TOP_BOTTOM)
 
         bboxes = nn.run_images(
             [np.array(image.resize((p.IMAGE_SIZE,p.IMAGE_SIZE)))],
-            cutoff=0.5)
+            cutoff=0.35)
         image = image.convert('RGBA')
         mask = draw_boxes(bboxes)
 

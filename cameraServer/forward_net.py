@@ -24,6 +24,8 @@ class NeuralNet:
         sq_graph = tf.get_default_graph()
         self.inp_batch = sq_graph.get_tensor_by_name('Input_batching/batch:0')
         t_activations = sq_graph.get_tensor_by_name('activation/activations:0')
+        self.do = sq_graph.get_tensor_by_name('Placeholder:0')
+        #print([n.name for n in tf.get_default_graph().as_graph_def().node])
         print('Done!')
         k = p.ANCHOR_COUNT
         t_deltas = tf.slice(t_activations, [0,0,0,0], [-1,-1,-1,4*k])
@@ -59,7 +61,7 @@ class NeuralNet:
         #    'Error in run_images: Images should be supplied as a batch of [batch, x, y, c]!'
         start_time = time.time()
         activations, deltas, gammas, classes, chosen_anchor = \
-                        self.sess.run(self.all_out, feed_dict={self.inp_batch: images})
+                        self.sess.run(self.all_out, feed_dict={self.inp_batch: images, self.do:1.0})
         print('Took %f seconds!'%(time.time()-start_time))
 
         gammas = np.reshape(gammas, [-1, gs**2*k])
@@ -75,17 +77,21 @@ class NeuralNet:
         for ib in range(batch_size):
             boxes = u.delta_to_box(deltas[ib], anchors)
             nms_indices = tf.image.non_max_suppression(u.trans_boxes(boxes),
-                gammas[ib],5, iou_threshold=0.1).eval(session=self.sess)
+                gammas[ib],5, iou_threshold=0.0).eval(session=self.sess)
             selected_boxes = boxes[nms_indices]
             selected_gamma = gammas[ib, nms_indices]
             selected_class = class_numbers[ib, nms_indices]
+            selected_class_scores = classes[ib, nms_indices]
             max_gamma= 0
 
             print('image %s'%ib)
 
             for i, box in enumerate(selected_boxes):
-                if selected_gamma[i] > cutoff:
-                    box_list.append(BoundingBox(u.trans_boxes(box),selected_gamma[i],selected_class[i]))
+                sm_scores = u.softmax(selected_class_scores[i])
+                conf = selected_gamma[i] * sm_scores[selected_class[i]]
+                if conf > cutoff:
+                    print(conf)
+                    box_list.append(BoundingBox(u.trans_boxes(box),conf,selected_class[i]))
 
         return box_list
 

@@ -1,4 +1,4 @@
-IMAGE_SIZE = 256
+IMAGE_SIZE = 512
 IMAGE_CHANNELS = 3
 
 OUT_CLASSES = 2 #Classes to recognize. 9 for KITTI

@@ -3,17 +3,12 @@ import picamera
 import params as p
 from PIL import Image
 import time
-<<<<<<< Updated upstream
 import io
 import numpy as np
 
 picSize = (640,480)
 
-=======
-picSize = (640,480)
->>>>>>> Stashed changes
 nn = NeuralNet(picSize, 'squeeze_normal-drone')
-
 
 camera = picamera.PiCamera()
 camera.resolution = picSize
