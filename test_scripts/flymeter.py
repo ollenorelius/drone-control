@@ -2,6 +2,8 @@ import dronekit as dk
 import sys
 import time
 from logger import Logger
+import utils as u
+import math
 
 conn_number = 0
 if len(sys.argv) != 1:
@@ -36,13 +38,35 @@ vehicle.simple_takeoff(1)
 
 log = Logger()
 log.write_line('N\tE\tD\tY\n')
-for i in range(300):
-    time.sleep(0.1)
+n_time = 100
+d_time = 0.1
+loc = vehicle.location.local_frame
+h_n = loc.north
+h_e = loc.east
+h_d = loc.down
+home = dk.LocationLocal(h_n,h_e,h_d)
+dest = dk.LocationLocal(h_n+1,h_e-0.3,h_d)
+for i in range(n_time):
+    time.sleep(d_time)
     yaw = vehicle.attitude.yaw
     loc = vehicle.location.local_frame
-    h = vehicle.rangefinder.distance
-    print("Coordinates: %.3f N, %.3f E, %.3f D Yaw: %3f\r"%(loc.north, loc.east, h ,yaw))
-    log.write_line('%s\t%s\t%s\t%s\n'%(loc.north, loc.east, h, yaw))
+    N = loc.north
+    E = loc.east
+    D = vehicle.rangefinder.distance
+    print("Coordinates: %.3f N, %.3f E, %.3f D Yaw: %3f\r"%(N, E, D ,yaw))
+    log.write_line('%s\t%s\t%s\t%s\n'%(N, E, D, yaw))
+
+    if i > 5/d_time:
+        ang = 347
+        r = 0.3
+        vn = math.cosd(ang) * r
+        ve = math.sind(ang) * r
+        u.send_ned_velocity(vehicle, vn, ve, 0)
+        print 'moving!'
+
+u.send_ned_velocity(vehicle,0,0,0)
+
+
 print 'Landing!'
 log.close()
 while(vehicle.mode.name != 'LAND'):

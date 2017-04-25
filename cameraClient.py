@@ -44,6 +44,12 @@ try:
         # Reset the stream for the next capture
         stream.seek(0)
         stream.truncate()
+
+        box_count = struct.unpack('<L', connection.read(struct.calcsize('<L')))[0]
+        box_centers = []
+        for i in range(box_count):
+            box_centers.append(struct.unpack('<ff', connection.read(struct.calcsize('<ff'))))
+        for b in box_centers: print(b)
     # Write a length of zero to the stream to signal we're done
     connection.write(struct.pack('<L', 0))
 finally:

@@ -60,3 +60,5 @@ target/
 cameraServer/Trainednets/
 
 cameraServer/networks/
+
+test_scripts/logs/

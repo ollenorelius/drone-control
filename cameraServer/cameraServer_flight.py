@@ -43,6 +43,12 @@ server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.bind(('0.0.0.0', 8000))
 server_socket.listen(0)
 
+fc_socket = socket.socket()
+fc_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+fc_socket.bind(('0.0.0.0', 8001))
+fc_socket.listen(0)
+
+
 def button_click_exit_mainloop (event):
     event.widget.quit() # this will cause mainloop to unblock.
 
@@ -58,6 +64,7 @@ label_image.place(x=0,y=0,width=picSize[0],height=picSize[1])
 
 # Accept a single connection and make a file-like object out of it
 connection = server_socket.accept()[0].makefile('rwb')
+fc_connection = fc_socket.accept()[0].makefile('rwb')
 
 
 while True:
@@ -88,11 +95,14 @@ while True:
 
             ret_data_count = len(bboxes)
             connection.write(struct.pack('<L', ret_data_count))
+            fc_connection.write(struct.pack('<L', ret_data_count))
             for box in bboxes:
                 x = (box.coords[2] + box.coords[0])/2
                 y = (box.coords[3] + box.coords[1])/2
+                fc_connection.write(struct.pack('<ff', x,y))
                 connection.write(struct.pack('<ff', x,y))
             connection.flush()
+            fc_connection.flush()
             image = image.convert('RGBA')
             mask = draw_boxes(bboxes)
 
