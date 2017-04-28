@@ -56,11 +56,12 @@ for i in range(n_time):
     print("Coordinates: %.3f N, %.3f E, %.3f D Yaw: %3f\r"%(N, E, D ,yaw))
     log.write_line('%s\t%s\t%s\t%s\n'%(N, E, D, yaw))
 
-    if i > 5/d_time:
+    if i > 3/d_time:
         ang = 347
-        r = 0.3
-        vn = math.cosd(ang) * r
-        ve = math.sind(ang) * r
+        r = 1
+        vn = math.cos(ang*math.pi/180) * r
+        ve = math.sin(ang*math.pi/180) * r
+        print((vn, ve))
         u.send_ned_velocity(vehicle, vn, ve, 0)
         print 'moving!'
 

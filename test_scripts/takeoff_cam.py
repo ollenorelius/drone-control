@@ -3,6 +3,7 @@ import sys
 import time
 from logger import Logger
 import state_machines as sm
+import utils as u
 
 conn_number = 0
 if len(sys.argv) != 1:
@@ -26,5 +27,7 @@ main_timer = 0
 while main_state != 100:
     main_state = fly_sm.run()
     cam_sm.run()
+    positions = u.get_relative_target_coords(vehicle, cam_sm.coords)
+    for p in positions: print(p)
 
 cam_sm.close()

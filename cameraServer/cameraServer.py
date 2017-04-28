@@ -10,14 +10,14 @@ import params as p
 from forward_net import NeuralNet, BoundingBox
 
 
-picSize = (640,480)
+picSize = (1280,960) #(640,480)
 
 def draw_boxes(boxes):
     mask = Image.new('RGBA', picSize, (255,255,255,0))
     d = ImageDraw.Draw(mask)
-    fnt = ImageFont.truetype('/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf', 12)
+    fnt = ImageFont.truetype('/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf', 24)
     txt_offset_x = 0
-    txt_offset_y = 20
+    txt_offset_y = 25
     for box in boxes:
         p_coords = [box.coords[0]*picSize[0],
                     box.coords[1]*picSize[1],
@@ -36,7 +36,7 @@ def draw_boxes(boxes):
 
 # Start a socket listening for connections on 0.0.0.0:8000 (0.0.0.0 means
 # all interfaces)
-nn = NeuralNet(picSize, 'squeeze_normal-drone_big_DO05')
+nn = NeuralNet(picSize, 'squeeze_tiny-drone_big_DO05_run2')
 #nn = NeuralNet(picSize, 'squeeze_normal-drone_big_DO02_run2')
 server_socket = socket.socket()
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -51,7 +51,7 @@ root.bind("<Button>", button_click_exit_mainloop)
 root.geometry('+%d+%d' % (100,100))
 root.mainloop()
 
-tkpi = ImageTk.PhotoImage(Image.new('RGB', (640,480)))
+tkpi = ImageTk.PhotoImage(Image.new('RGB', picSize))
 label_image = tkinter.Label(root, image=tkpi)
 label_image.place(x=0,y=0,width=picSize[0],height=picSize[1])
 
@@ -62,6 +62,7 @@ connection = server_socket.accept()[0].makefile('rwb')
 
 while True:
     try:
+        root.geometry('%dx%d' % picSize)
         while True:
             connection.write(b'a')
             connection.flush()
@@ -94,12 +95,12 @@ while True:
                 connection.write(struct.pack('<ff', x,y))
             connection.flush()
             image = image.convert('RGBA')
+            image = image.resize(picSize,Image.ANTIALIAS)
             mask = draw_boxes(bboxes)
 
             image = Image.alpha_composite(image, mask)
 
-            root.geometry('%dx%d' % picSize)
-            tkpi = ImageTk.PhotoImage(image.resize(picSize,Image.ANTIALIAS))
+            tkpi = ImageTk.PhotoImage(image)
             label_image.configure(image=tkpi)
 
             root.update()

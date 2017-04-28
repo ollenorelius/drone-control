@@ -36,7 +36,11 @@ class CameraHandler(object):
         self.client_socket.close()
 
 
+
 class Flyer():
+    '''
+    State machine to control flight plan.
+    '''
     state = 0
     start_timer = 0
     vehicle = None
