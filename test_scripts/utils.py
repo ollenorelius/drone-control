@@ -24,6 +24,8 @@ def get_relative_target_coords(vehicle, centers):
     Transforms picture coordinates to local coordinate system.
     This assumes camera is mounted at 45 degrees to the vertical, but angle can
     be modified by cam_mount_angle.
+    Input: vehicle: Vehicle object from DroneKit
+    centers: list of coord tuples in [0,1] representing found objects in image
     '''
 
     pi = 3.14159265
@@ -38,13 +40,42 @@ def get_relative_target_coords(vehicle, centers):
     positions = []
     for c in centers:
         phi_x = (c[0]-0.5)*cam_x_fov
-        phi_y = (c[1]-0.5)*cam_y_fov
+        phi_y = -(c[1]-0.5)*cam_y_fov
 
         theta_y = pitch + cam_mount_angle + phi_y
-        theta_x = roll + phi_x
+        theta_x = phi_x
 
-        y = math.tan(theta_x) * h
+
+        y = math.tan(theta_y) * h
         r = math.sqrt(y**2+h**2)
         x = r * math.tan(theta_x)
+        '''print('phi = %s,%s'%(phi_x, phi_y))
+        print('pitch = %s, roll = %s'%(pitch, roll))
+        print('theta = %s,%s'%(theta_x, theta_y))
+        print('x,y,r,h = %s,%s,%s,%s'%(x,y,r,h))'''
         positions.append((x,y))
     return positions
+
+def get_global_target_coords(vehicle, centers):
+    '''
+    Get coordinates of found objects in global space. Centered at home position,
+    ie start location. In meters.
+    '''
+    rel_coords = get_relative_target_coords(vehicle, centers)
+
+    Nd = vehicle.location.local_frame.north
+    Ed = vehicle.location.local_frame.east
+    yaw = vehicle.attitude.yaw
+    global_coords = []
+    for c in rel_coords:
+        x = c[0]
+        y = c[1]
+
+        Er = x * math.cos(yaw) + y * math.sin(yaw)
+        Nr = -x * math.sin(yaw) + y * math.cos(yaw)
+
+        N = Nd + Nr
+        E = Ed + Er
+
+        global_coords.append((N,E))
+    return global_coords

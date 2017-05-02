@@ -13,6 +13,7 @@ class CameraHandler(object):
     client_socket = None
     stream = io.BytesIO()
     centers = []
+    state = 0
     def __init__(self):
         self.client_socket = socket.socket()
         self.client_socket.connect(('puff-buntu.local', 8001))
@@ -20,6 +21,7 @@ class CameraHandler(object):
         # Make a file-like object out of the connection
         self.connection = self.client_socket.makefile('rwb')
     def run(self):
+        self.centers = []
         try:
             box_count = struct.unpack('<L', self.connection.read(struct.calcsize('<L')))[0]
             for i in range(box_count):
@@ -31,6 +33,7 @@ class CameraHandler(object):
             print('Connection failed! E:(%s)'%sys.exc_info()[0])
             self.connection.close()
             self.client_socket.close()
+            self.state = -1
     def close(self):
         self.connection.close()
         self.client_socket.close()
@@ -61,7 +64,7 @@ class Flyer():
             self.vehicle.armed = True
             self.state = 1
         elif self.state == 1:
-            print 'Mode: %s, Armed = %s\r'%(self.vehicle.mode.name, self.vehicle.armed)
+            #print 'Mode: %s, Armed = %s\r'%(self.vehicle.mode.name, self.vehicle.armed)
             if(self.vehicle.armed == True and self.vehicle.mode.name == self.mode):
                 print 'Armed!'
                 self.state = 2

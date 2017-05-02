@@ -4,6 +4,7 @@ import time
 from logger import Logger
 import state_machines as sm
 import utils as u
+from logger import Logger
 
 conn_number = 0
 if len(sys.argv) != 1:
@@ -23,11 +24,15 @@ fly_sm = sm.Flyer(vehicle)
 cam_sm = sm.CameraHandler()
 main_state = 0
 main_timer = 0
-
-while main_state != 100:
+l = Logger(name=None, folder=car_coords)
+while (main_state != 100) & (cam_sm.state != -1):
     main_state = fly_sm.run()
     cam_sm.run()
-    positions = u.get_relative_target_coords(vehicle, cam_sm.coords)
-    for p in positions: print(p)
+    positions = u.get_relative_target_coords(vehicle, cam_sm.centers)
+    global_pos = u.get_global_target_coords(vehicle, cam_sm.centers)
+    for p in global_pos:
+        print 'car is at (%.2f,%.2f)'%p
+        l.write_line('%s\t%s'%p)
 
+l.close()
 cam_sm.close()
