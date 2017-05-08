@@ -62,3 +62,11 @@ cameraServer/Trainednets/
 cameraServer/networks/
 
 test_scripts/logs/
+
+test_scripts/car_coords/
+
+test_scripts/quad_coords/
+
+cameraServer/rework/networks/
+
+test_scripts/test\.png

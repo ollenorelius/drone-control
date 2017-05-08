@@ -9,9 +9,11 @@ GRID_SIZE = 8 #Number of grid points in which to put anchors in the image.
 # ^MUST MATCH FINAL ACTIVATION SIZE!
 # ^^ This is in one dimension, so final size is [batch,GRID_SIZE, GRID_SIZE,depth]
 
-ANCHOR_COUNT = 3 #Number of anchors. Must match below.
+ANCHOR_COUNT = 9 #Number of anchors. Must match below.
 
-ANCHOR_SIZES = [[0.8, 0.8], [0.4, 0.4], [0.2, 0.2]]
+ANCHOR_SIZES = [[0.8, 0.8], [0.4, 0.8], [0.8, 0.4],
+                [0.4, 0.4], [0.2, 0.4], [0.4, 0.2],
+                [0.2, 0.2], [0.1, 0.2], [0.2, 0.1]]
                 #Anchor sizes. [w,h] in relative units
 
 LAMBDA_CONF_P = 75 #Param for weight of used confidence scores

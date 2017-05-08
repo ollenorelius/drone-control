@@ -6,6 +6,7 @@ import os, sys
 import tkinter
 import numpy as np
 import params as p
+import time
 
 from forward_net import NeuralNet, BoundingBox
 
@@ -36,7 +37,7 @@ def draw_boxes(boxes):
 
 # Start a socket listening for connections on 0.0.0.0:8000 (0.0.0.0 means
 # all interfaces)
-nn = NeuralNet(picSize, 'squeeze_normal-drone_big_DO05')
+nn = NeuralNet(picSize, 'normal_fast_DO05_class_fix3_anch')
 #nn = NeuralNet(picSize, 'squeeze_normal-drone_big_DO02_run2')
 server_socket = socket.socket()
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -70,10 +71,9 @@ fc_connection = fc_socket.accept()[0].makefile('rwb')
 while True:
     try:
         while True:
-            connection.write(b'a')
-            connection.flush()
             # Read the length of the image as a 32-bit unsigned int. If the
             # length is zero, quit the loop
+
             image_len = struct.unpack('<L', connection.read(struct.calcsize('<L')))[0]
             if not image_len:
                 break
@@ -90,18 +90,15 @@ while True:
             image = image.transpose(Image.FLIP_TOP_BOTTOM)
 
             bboxes = nn.run_images(
-                [np.array(image.resize((p.IMAGE_SIZE,p.IMAGE_SIZE)))],
+                [np.asarray(image.resize((p.IMAGE_SIZE,p.IMAGE_SIZE)))],
                 cutoff=0.4)
 
             ret_data_count = len(bboxes)
-            connection.write(struct.pack('<L', ret_data_count))
             fc_connection.write(struct.pack('<L', ret_data_count))
             for box in bboxes:
                 x = (box.coords[2] + box.coords[0])/2
                 y = (box.coords[3] + box.coords[1])/2
                 fc_connection.write(struct.pack('<ff', x,y))
-                connection.write(struct.pack('<ff', x,y))
-            connection.flush()
             fc_connection.flush()
             image = image.convert('RGBA')
             mask = draw_boxes(bboxes)
