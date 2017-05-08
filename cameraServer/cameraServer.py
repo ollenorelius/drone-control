@@ -36,7 +36,7 @@ def draw_boxes(boxes):
 
 # Start a socket listening for connections on 0.0.0.0:8000 (0.0.0.0 means
 # all interfaces)
-nn = NeuralNet(picSize, 'squeeze_tiny-drone_big_DO05_run2')
+nn = NeuralNet(picSize, 'big_cups_slow_do05')
 #nn = NeuralNet(picSize, 'squeeze_normal-drone_big_DO02_run2')
 server_socket = socket.socket()
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
