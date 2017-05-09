@@ -35,7 +35,7 @@ def button_click_exit_mainloop (event):
 
 root = tkinter.Tk()
 root.bind("<Button>", button_click_exit_mainloop)
-root.geometry('+%d+%d' % (100,100))
+root.geometry('%dx%d+%d+%d' % (640,480,100,100))
 root.mainloop()
 
 tkpi = ImageTk.PhotoImage(Image.new('RGB', picSize))
@@ -47,13 +47,16 @@ server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.connect(('puff-buntu.local', 8001))
 connection = server_socket.makefile('rwb')
 
+pickle_stream = io.BytesIO()
+image_stream = io.BytesIO()
 while True:
     # Read the length of the image as a 32-bit unsigned int. If the
     # length is zero, quit the loop
+    t = time.time()
     connection.write(struct.pack('<c', b'c'))
     connection.flush()
     pickle_len = struct.unpack('<L', connection.read(struct.calcsize('<L')))[0]
-    pickle_stream = io.BytesIO()
+    pickle_stream.seek(0)
     pickle_stream.write(connection.read(pickle_len))
     pickle_stream.seek(0)
     bboxes = pickle.loads(pickle_stream.read())
@@ -66,7 +69,7 @@ while True:
         break
     # Construct a stream to hold the image data and read the image
     # data from the connection
-    image_stream = io.BytesIO()
+    image_stream.seek(0)
     image_stream.write(connection.read(image_len))
     # Rewind the stream, open it as an image with PIL and do some
     # processing on it
@@ -74,15 +77,16 @@ while True:
     image = Image.open(image_stream)
     image.load()
     image.verify()
-    image = image.transpose(Image.FLIP_TOP_BOTTOM)
+    #image = image.transpose(Image.FLIP_TOP_BOTTOM)
 
     image = image.convert('RGBA')
     mask = draw_boxes(bboxes)
     image = Image.alpha_composite(image, mask)
     image = image.convert('RGB')
 
-    root.geometry('%dx%d' % picSize)
+    #root.geometry('%dx%d' % picSize)
     tkpi = ImageTk.PhotoImage(image.resize(picSize,Image.ANTIALIAS))
     label_image.configure(image=tkpi)
 
     root.update()
+    print('%.3f FPS\r'%(1/(time.time()-t)))

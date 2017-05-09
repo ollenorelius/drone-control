@@ -86,8 +86,6 @@ class NeuralNet:
             selected_class_scores = classes[ib, nms_indices]
             max_gamma= 0
 
-            print('image %s'%ib)
-
             for i, box in enumerate(selected_boxes):
                 sm_scores = u.softmax(selected_class_scores[i])
                 conf = selected_gamma[i] * sm_scores[selected_class[i]]
