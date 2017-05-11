@@ -20,7 +20,7 @@ vehicle = dk.connect(port, wait_ready=True, baud=baudrate)
 
 print('Connected!')
 print('Battery voltage is %f V'%vehicle.battery.voltage)
-fly_sm = sm.Takeoff(vehicle)
+fly_sm = sm.Turn(vehicle)#sm.Takeoff(vehicle)
 cam_sm = sm.CameraHandler()
 main_state = 0
 main_timer = 0

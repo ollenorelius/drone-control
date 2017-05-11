@@ -75,4 +75,4 @@ while True:
     label_image.configure(image=tkpi)
 
     root.update()
-    print('%.3f FPS\r'%(1/(time.time()-t)))
+    print('%.3f FPS\r'%(1/(time.time()-t)), end='')

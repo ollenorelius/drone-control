@@ -2,7 +2,24 @@ import dronekit as dk
 import math
 from pymavlink import mavutil
 
-def condition_yaw(vehicle, heading, relative=False):
+class BoundingBox(object):
+    '''
+    Struct to send info to the PIL front end.
+
+    coords: 1x4 array of box coordinates. [x1, y1, x2, y2]
+    confidence: confidence score for the box
+    classification: numerical class given to box
+    '''
+    coords = [-1, -1, -1, -1]
+    confidence = 0
+    classification = -1
+
+    def __init__(self, in_coords, in_gamma, in_class):
+        self.coords = in_coords
+        self.confidence = in_gamma
+        self.classification = in_class
+
+def condition_yaw(vehicle, heading, rate=20, relative=False):
     if relative:
         is_relative=1 #yaw relative to direction of travel
     else:
@@ -19,6 +36,23 @@ def condition_yaw(vehicle, heading, relative=False):
         0, 0, 0)    # param 5 ~ 7 not used
     # send command to vehicle
     vehicle.send_mavlink(msg)
+
+def send_ned_target(vehicle, n, e, d):
+    '''
+    Move vehicle in direction based on specified velocity vectors.
+    '''
+    msg = vehicle.message_factory.set_position_target_local_ned_encode(
+        0,       # time_boot_ms (not used)
+        0, 0,    # target system, target component
+        dk.mavutil.mavlink.MAV_FRAME_LOCAL_NED, # frame
+        0b0000111111000000, # type_mask (speed and position enabled)
+        n, e, -d, # x, y, z positions
+        0.5, 0.5, 0.5, # x, y, z velocity in m/s
+        0, 0, 0, # x, y, z acceleration (not supported yet, ignored in GCS_Mavlink)
+        0, 0)    # yaw, yaw_rate (not supported yet, ignored in GCS_Mavlink)
+
+    vehicle.send_mavlink(msg)
+
 
 def send_ned_velocity(vehicle, velocity_x, velocity_y, velocity_z):
     '''
@@ -92,7 +126,8 @@ def get_global_target_coords(vehicle, centers):
 
         Er = x * math.cos(yaw) + y * math.sin(yaw)
         Nr = -x * math.sin(yaw) + y * math.cos(yaw)
-
+        print(Nd)
+        print(Nr)
         N = Nd + Nr
         E = Ed + Er
 
