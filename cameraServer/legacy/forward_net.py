@@ -7,7 +7,6 @@ from scipy import misc
 import numpy as np
 import time
 from tensorflow.python.platform import gfile
-import sys
 
 class NeuralNet:
 
@@ -15,7 +14,7 @@ class NeuralNet:
 
         k = p.ANCHOR_COUNT
         gs = p.GRID_SIZE
-        print('loading network.. ', end='', flush=True)
+        print('loading network.. ', end='')
         folder_name = './networks/%s'%net_name
         with gfile.FastGFile(folder_name + "/best_valid.pb",'rb') as f:
             graph_def = tf.GraphDef()
@@ -28,7 +27,6 @@ class NeuralNet:
         self.do = sq_graph.get_tensor_by_name('Placeholder:0')
         #print([n.name for n in tf.get_default_graph().as_graph_def().node])
         print('Done!')
-        sys.stdout.flush()
         k = p.ANCHOR_COUNT
         t_deltas = tf.slice(t_activations, [0,0,0,0], [-1,-1,-1,4*k])
         t_gammas = tf.sigmoid(tf.slice(t_activations, [0,0,0,4*k], [-1,-1,-1,k]))
@@ -85,6 +83,8 @@ class NeuralNet:
             selected_class = class_numbers[ib, nms_indices]
             selected_class_scores = classes[ib, nms_indices]
             max_gamma= 0
+
+            print('image %s'%ib)
 
             for i, box in enumerate(selected_boxes):
                 sm_scores = u.softmax(selected_class_scores[i])

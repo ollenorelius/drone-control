@@ -23,6 +23,7 @@ inbound_socket.listen(0)
 
 job_queue = Queue()
 result_queue = Queue()
+#last_pic = Queue()
 last_pic = Image.new('RGBA', picSize, (255,255,255,0))
 
 timing = False
@@ -32,8 +33,8 @@ def time_op(start, name):
         print('Time taken for %s: %.6f'%(name, tt))
     return time.time()
 
-def client_handler(inbound_socket, addr, job_queue, result_queue, last_pic):
-
+def client_handler(inbound_socket, addr, job_queue, result_queue):
+    global last_pic
     print(inbound_socket)
     def draw_boxes(boxes):
         mask = Image.new('RGBA', picSize, (255,255,255,0))
@@ -67,7 +68,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue, last_pic):
             if command != b'':
                 #print(command)
                 if command == b'p':
-                    last_pic.save(image_stream, format='jpeg')
+                    last_pic.save(image_stream, format='jpeg', quality=85, thumbnail=None)
                     t = time_op(t, 'save pic')
                     client_connection.write(struct.pack('<L', image_stream.tell()))
                     t = time_op(t, 'send header')
@@ -87,6 +88,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue, last_pic):
                     image_len = struct.unpack('<L', camera_connection.read(struct.calcsize('<L')))[0]
                     t = time_op(t, 'recv header')
                     if not image_len:
+                        print('Received image length of 0, quitting!')
                         break
                     # Construct a stream to hold the image data and read the image
                     # data from the connection
@@ -96,8 +98,8 @@ def client_handler(inbound_socket, addr, job_queue, result_queue, last_pic):
                     # processing on it
                     image_stream.seek(0)
                     image = Image.open(image_stream)
-                    image.load()
-                    image.verify()
+                    #image.load()
+                    #image.verify()
 
                     t = time_op(t, 'open pic & process')
                     job_queue.put(image)
@@ -108,7 +110,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue, last_pic):
                     image_stream.truncate()
 
                     bboxes = result_queue.get(False)
-                    box_pickle = pickle.dumps(bboxes)
+                    box_pickle = pickle.dumps(bboxes, protocol=1)
                     pickle_size = len(box_pickle)
                     t = time_op(t, 'pickle')
                     client_connection.write(struct.pack('<L', pickle_size))
@@ -119,6 +121,8 @@ def client_handler(inbound_socket, addr, job_queue, result_queue, last_pic):
                     last_pic = image
     except:
         print('Error: %s'%sys.exc_info()[0], flush=True)
+        print('Error: %s'%sys.exc_info()[1], flush=True)
+        print('Error: %s'%sys.exc_info()[2], flush=True)
         client_connection.close()
         camera_connection.close()
         inbound_socket.close()
@@ -139,6 +143,6 @@ threading.Thread(target=NNRunner, args=(job_queue, result_queue), daemon=True).s
 
 while True:
     c, addr = inbound_socket.accept()
-    args = (c, addr, job_queue, result_queue, last_pic)
+    args = (c, addr, job_queue, result_queue)
     threading.Thread(target=client_handler,args=args).start()
     print('Client connected: %s:%s'%addr)

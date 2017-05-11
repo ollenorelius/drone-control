@@ -1,115 +1,88 @@
-import io
+#/usr/bin/python3
+
 import socket
+import io
+import picamera
+import sys
 import struct
-from PIL import Image, ImageTk, ImageDraw, ImageFont
-import os, sys
-import tkinter
-import numpy as np
-import params as p
-
-from forward_net import NeuralNet, BoundingBox
+import time
+import threading
+from queue import Queue
 
 
-picSize = (1280,960) #(640,480)
+inbound_socket = socket.socket()
+inbound_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+inbound_socket.bind(('0.0.0.0', 8000))
+inbound_socket.listen(0)
 
-def draw_boxes(boxes):
-    mask = Image.new('RGBA', picSize, (255,255,255,0))
-    d = ImageDraw.Draw(mask)
-    fnt = ImageFont.truetype('/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf', 24)
-    txt_offset_x = 0
-    txt_offset_y = 25
-    for box in boxes:
-        p_coords = [box.coords[0]*picSize[0],
-                    box.coords[1]*picSize[1],
-                    box.coords[2]*picSize[0],
-                    box.coords[3]*picSize[1]]
-        d.rectangle(p_coords, outline='red')
-        print('drawing box at ', end='')
-        print([x for x in box.coords])
-        textpos = (p_coords[0] - txt_offset_x, p_coords[1] - txt_offset_y)
-        d.text(textpos, 'Class %s at %s confidence'%(box.classification,box.confidence), font=fnt, fill='red')
+camera = picamera.PiCamera()
+camera.resolution = (640, 480)
+camera.sensor_mode = 7
+camera.shutter_speed = 10000
+camera.framerate = 40
+camera.rotation = 180
 
-    return mask
+timing = False
+image_lock = threading.Lock()
 
+image = b'asdf'
 
-
-
-# Start a socket listening for connections on 0.0.0.0:8000 (0.0.0.0 means
-# all interfaces)
-nn = NeuralNet(picSize, 'big_cups_slow_do05')
-#nn = NeuralNet(picSize, 'squeeze_normal-drone_big_DO02_run2')
-server_socket = socket.socket()
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server_socket.bind(('0.0.0.0', 8000))
-server_socket.listen(0)
-
-def button_click_exit_mainloop (event):
-    event.widget.quit() # this will cause mainloop to unblock.
-
-root = tkinter.Tk()
-root.bind("<Button>", button_click_exit_mainloop)
-root.geometry('+%d+%d' % (100,100))
-root.mainloop()
-
-tkpi = ImageTk.PhotoImage(Image.new('RGB', picSize))
-label_image = tkinter.Label(root, image=tkpi)
-label_image.place(x=0,y=0,width=picSize[0],height=picSize[1])
+def time_op(start, name):
+    tt = time.time() - start
+    if timing:
+        print('Time taken for %s: %s'%(name, tt))
+    return time.time()
 
 
-# Accept a single connection and make a file-like object out of it
-connection = server_socket.accept()[0].makefile('rwb')
+def camera_thread():
+    global image
+    cam_stream = io.BytesIO()
+    for foo in camera.capture_continuous(output=cam_stream,
+                                        format='jpeg',
+                                        use_video_port=True,
+                                        quality=15,
+                                        thumbnail=None):
+        cam_stream.seek(0)
+        image = cam_stream.read()
+        cam_stream.seek(0)
+        cam_stream.truncate()
 
+        #if no clients are connected, just chill ad wait to save power.
+        while(threading.active_count() < 3):
+            time.sleep(0.2)
 
-while True:
+def network_thread(inbound_socket):
+    client_connection = inbound_socket.makefile('rwb')
+    buf = bytearray([0])
+    global image
     try:
-        root.geometry('%dx%d' % picSize)
         while True:
-            connection.write(b'a')
-            connection.flush()
-            # Read the length of the image as a 32-bit unsigned int. If the
-            # length is zero, quit the loop
-            image_len = struct.unpack('<L', connection.read(struct.calcsize('<L')))[0]
-            if not image_len:
-                break
-            # Construct a stream to hold the image data and read the image
-            # data from the connection
-            image_stream = io.BytesIO()
-            image_stream.write(connection.read(image_len))
-            # Rewind the stream, open it as an image with PIL and do some
-            # processing on it
-            image_stream.seek(0)
-            image = Image.open(image_stream)
-            image.load()
-            image.verify()
-            image = image.transpose(Image.FLIP_TOP_BOTTOM)
+            t = time.time()
+            command = client_connection.read(1)
+            if command != b'':
+                t = time_op(t, 'recv command')
+                #print(command)
+                if command == b'p':
+                    t = time.time()
+                    #print(image_lock)
+                    #with image_lock:
+                    #buf = image
+                    t = time_op(t, 'capture')
+                    client_connection.write(struct.pack('<L', len(image)))
+                    t = time_op(t, 'send header')
+                    # Rewind the stream and send the image data over the wire
+                    client_connection.write(image)
+                    client_connection.flush()
+                    t = time_op(t, 'send data')
+            else:
+                raise Exception('Stream broken!')
+    except:
+        print('Error: %s'%sys.exc_info()[0], flush=True)
+        print('Error: %s'%sys.exc_info()[1], flush=True)
+        print('Error: %s'%sys.exc_info()[2], flush=True)
 
-            bboxes = nn.run_images(
-                [np.array(image.resize((p.IMAGE_SIZE,p.IMAGE_SIZE)))],
-                cutoff=0.4)
-
-            ret_data_count = len(bboxes)
-            connection.write(struct.pack('<L', ret_data_count))
-            for box in bboxes:
-                x = (box.coords[2] + box.coords[0])/2
-                y = (box.coords[3] + box.coords[1])/2
-                connection.write(struct.pack('<ff', x,y))
-            connection.flush()
-            image = image.convert('RGBA')
-            image = image.resize(picSize,Image.ANTIALIAS)
-            mask = draw_boxes(bboxes)
-
-            image = Image.alpha_composite(image, mask)
-
-            tkpi = ImageTk.PhotoImage(image)
-            label_image.configure(image=tkpi)
-
-            root.update()
-
-            print('Image is %dx%d' % image.size)
-
-    finally:
-        connection.close()
-        server_socket.close()
-
-        server_socket.listen(0)
-        connection = server_socket.accept()[0].makefile('rwb')
+threading.Thread(target=camera_thread, daemon=True).start()
+while True:
+    connection, addr = inbound_socket.accept()
+    threading.Thread(target=network_thread, args=[connection]).start()
+    print(connection)
