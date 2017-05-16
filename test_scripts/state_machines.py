@@ -176,7 +176,7 @@ class Turn():
             self.vehicle.armed = True
             self.state = 1
         elif self.state == 1:
-            #print 'Mode: %s, Armed = %s\r'%(self.vehicle.mode.name, self.vehicle.armed)
+            print 'Mode: %s, Armed = %s\r'%(self.vehicle.mode.name, self.vehicle.armed)
             if(self.vehicle.armed == True and self.vehicle.mode.name == self.mode):
                 print 'Armed!'
                 self.state = 100
@@ -211,7 +211,7 @@ class Turn():
             yaw = self.vehicle.attitude.yaw
             loc = self.vehicle.location.local_frame
             h = self.vehicle.rangefinder.distance
-            print dir(self.vehicle.location)
+            #print dir(self.vehicle.location)
             #print("Coordinates: %.3f N, %.3f E, %.3f D Yaw: %3f\r"%(loc.north, loc.east, h ,yaw))
             self.log.write_line('%s\t%s\t%s\t%s\n'%(loc.north, loc.east, h, yaw))
             if t - self.start_timer > 20: #Fly for x secs

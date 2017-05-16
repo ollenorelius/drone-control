@@ -114,22 +114,27 @@ def get_global_target_coords(vehicle, centers):
     Get coordinates of found objects in global space. Centered at home position,
     ie start location. In meters.
     '''
-    rel_coords = get_relative_target_coords(vehicle, centers)
+    if vehicle.location.local_frame.north == None:
+        print('In get_global_target_coords: Got local_frame.north == None!')
+        global_coords = []
+    else:
+        #print dir(vehicle.location.local_frame)
+        rel_coords = get_relative_target_coords(vehicle, centers)
 
-    Nd = vehicle.location.local_frame.north
-    Ed = vehicle.location.local_frame.east
-    yaw = vehicle.attitude.yaw
-    global_coords = []
-    for c in rel_coords:
-        x = c[0]
-        y = c[1]
+        Nd = vehicle.location.local_frame.north
+        Ed = vehicle.location.local_frame.east
+        yaw = vehicle.attitude.yaw
+        global_coords = []
+        for c in rel_coords:
+            x = c[0]
+            y = c[1]
 
-        Er = x * math.cos(yaw) + y * math.sin(yaw)
-        Nr = -x * math.sin(yaw) + y * math.cos(yaw)
-        print(Nd)
-        print(Nr)
-        N = Nd + Nr
-        E = Ed + Er
+            Er = x * math.cos(yaw) + y * math.sin(yaw)
+            Nr = -x * math.sin(yaw) + y * math.cos(yaw)
+            print(Nd)
+            print(Nr)
+            N = Nd + Nr
+            E = Ed + Er
 
-        global_coords.append((N,E))
+            global_coords.append((N,E))
     return global_coords
