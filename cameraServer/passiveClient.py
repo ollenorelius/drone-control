@@ -44,7 +44,7 @@ label_image.place(x=0,y=0,width=picSize[0],height=picSize[1])
 
 server_socket = socket.socket()
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server_socket.connect(('puff-buntu.local', 8001))
+server_socket.connect(('biffen.local', 8001))
 connection = server_socket.makefile('rwb')
 
 pickle_stream = io.BytesIO()

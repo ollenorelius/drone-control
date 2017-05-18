@@ -8,6 +8,7 @@ import numpy as np
 import time
 from tensorflow.python.platform import gfile
 import sys
+from bbox import BoundingBox
 
 class NeuralNet:
 
@@ -35,7 +36,9 @@ class NeuralNet:
         t_classes = tf.slice(t_activations, [0,0,0,5*k], [-1,-1,-1,p.OUT_CLASSES*k])
         t_chosen_anchor = tf.argmax(t_gammas, axis=3)
         self.all_out = [t_activations, t_deltas, t_gammas, t_classes, t_chosen_anchor]
-        self.sess = tf.Session()
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth=True
+        self.sess = tf.Session(config=config)
 
 
 
@@ -91,6 +94,6 @@ class NeuralNet:
                 conf = selected_gamma[i] * sm_scores[selected_class[i]]
                 if conf > cutoff:
                     print(conf)
-                    box_list.append(u.BoundingBox(u.trans_boxes(box),conf,selected_class[i]))
+                    box_list.append(BoundingBox(u.trans_boxes(box),conf,selected_class[i]))
 
         return box_list

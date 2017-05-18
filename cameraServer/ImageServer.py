@@ -9,7 +9,7 @@ import time
 import pickle
 
 from forward_net import NeuralNet
-
+from utils import BoundingBox
 from queue import Queue
 import threading
 
@@ -37,24 +37,7 @@ def time_op(start, name):
 def client_handler(inbound_socket, addr, job_queue, result_queue):
     global last_pic
     print(inbound_socket)
-    def draw_boxes(boxes):
-        mask = Image.new('RGBA', picSize, (255,255,255,0))
-        d = ImageDraw.Draw(mask)
-        fnt = ImageFont.truetype('/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf', 12)
-        txt_offset_x = 0
-        txt_offset_y = 20
-        for box in boxes:
-            p_coords = [box.coords[0]*picSize[0],
-                        box.coords[1]*picSize[1],
-                        box.coords[2]*picSize[0],
-                        box.coords[3]*picSize[1]]
-            d.rectangle(p_coords, outline='red')
-            print('drawing box at ', end='')
-            print([x for x in box.coords])
-            textpos = (p_coords[0] - txt_offset_x, p_coords[1] - txt_offset_y)
-            d.text(textpos, 'Class %s at %s confidence'%(box.classification,box.confidence), font=fnt, fill='red')
 
-        return mask
     try:
         camera_socket = socket.socket()
         camera_socket.connect(('dronepi.local', 8000))
@@ -176,7 +159,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
         camera_socket.close()
     return 0
 
-def NNRunner(input_queue, output_queue):
+def ProcessRunner(input_queue, output_queue):
     nn = NeuralNet(picSize, 'normal_fast_DO05_class_fix3_anch')
     while True:
         pic = input_queue.get(True)
