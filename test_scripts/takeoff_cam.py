@@ -15,6 +15,7 @@ if len(sys.argv) != 1:
 baudrate = 57600
 port = '/dev/ttyS%s'%conn_number #If using hardware serial. HW serial has issues relating to GPU throttling (google it), use with caution
 port = '/dev/ttyACM%s'%conn_number #If using USB. Safe but physically clunky.
+port = 'udp:localhost:14551'
 print 'Connecting to %s at %s baud'%(port, baudrate)
 vehicle = dk.connect(port, wait_ready=True, baud=baudrate)
 

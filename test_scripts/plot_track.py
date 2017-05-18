@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-logname = '2017-5-11_15:1:27.txt'
+logname = '2017-5-16_18:41:29.txt'
 f_quad = open('quad_coords/'+logname, 'r')
 f_car = open('car_coords/'+logname, 'r')
 

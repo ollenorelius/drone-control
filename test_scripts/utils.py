@@ -18,7 +18,18 @@ class BoundingBox(object):
         self.coords = in_coords
         self.confidence = in_gamma
         self.classification = in_class
-
+def set_home(vehicle, lat=1, lon=1,alt=-1):
+    msg = vehicle.message_factory.command_long_encode(
+        0, 0,    # target system, target component
+        mavutil.mavlink.MAV_CMD_DO_SET_HOME, #command
+        0, #confirmation
+        0,    # param 1, (1=use current location, 0=use specified location)
+        0,          # param 2, unused
+        0,          # param 3,unused
+        0, # param 4, unused
+        lat, lon, alt)    # param 5 ~ 7 latitude, longitude, altitude
+    # send command to vehicle
+    vehicle.send_mavlink(msg)
 def condition_yaw(vehicle, heading, rate=20, relative=False):
     if relative:
         is_relative=1 #yaw relative to direction of travel
@@ -30,7 +41,7 @@ def condition_yaw(vehicle, heading, rate=20, relative=False):
         mavutil.mavlink.MAV_CMD_CONDITION_YAW, #command
         0, #confirmation
         heading,    # param 1, yaw in degrees
-        10,          # param 2, yaw speed deg/s
+        rate,          # param 2, yaw speed deg/s
         1,          # param 3, direction -1 ccw, 1 cw
         is_relative, # param 4, relative offset 1, absolute angle 0
         0, 0, 0)    # param 5 ~ 7 not used
