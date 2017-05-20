@@ -4,6 +4,67 @@ from pymavlink import mavutil
 import struct
 import sys
 
+def set_rc_override(vehicle, channel, value):
+    if channel in ['yaw', 'y', 'all']:
+        vehicle.channels.overrides['0'] = value
+    if channel in ['throttle', 't', 'all']:
+        vehicle.channels.overrides['1'] = value
+    if channel in ['roll', 'r', 'all']:
+        vehicle.channels.overrides['2'] = value
+    if channel in ['pitch', 'p', 'all']:
+        vehicle.channels.overrides['3'] = value
+
+def rc_channel_to_number(channel):
+    if channel in ['yaw', 'y']:
+        return 0
+    if channel in ['throttle', 't']:
+        return 1
+    if channel in ['roll', 'r']:
+        return 2
+    if channel in ['pitch', 'p']:
+        return 3
+
+override_counter = [0,0,0,0]
+override_lock = threading.Lock()
+def override_interval(vehicle, channel, value, time):
+    '''
+    Method for setting RC overrides for a set interval. Supposed to be executed
+    in its own thread as not to block the rest of the program.
+
+    Inputs: vehicle: dronekit vehicle reference
+            channel: channel to override, 'yaw', 'throttle', 'roll' or 'pitch'
+            value: value for override. Typically in [1000, 2000]
+            time: time for override in seconds. (float)
+    '''
+    global override_counter
+    global override_lock
+    channel_number = rc_channel_to_number(channel)
+
+    with counter_lock:
+        override_counter[channel_number] += 1 #Add one to indicate thread is running
+    set_rc_override(vehicle, channel, value)
+    time.sleep(time)
+
+    with counter_lock:
+        override_counter[channel_number] -= 1 #Thread no longer running
+    if override_counter[channel_number] == 0: #If no one else is running, stop the override.
+        set_rc_override(vehicle, channel, None)
+
+def controller_priority(vehicle):
+    '''
+    Thread to watch controller activity and return manual control if sticks are moved.
+    Safety feature.
+    '''
+    last_values = [0,0,0,0]
+    while True:
+        for i_channel in range(4):
+            if abs(vehicle.channels[str(i_channel)] - last_values[i_channel]) > 10:
+                set_rc_override(vehicle, 'all', None)
+                last_values[i_channel] = vehicle.channels[i_channel]
+
+
+
+
 def set_home(vehicle, lat=1, lon=1,alt=-1):
     msg = vehicle.message_factory.command_long_encode(
         0, 0,    # target system, target component
