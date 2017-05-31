@@ -3,30 +3,34 @@ import math
 from pymavlink import mavutil
 import struct
 import sys
+import threading
+import time
 
 def set_rc_override(vehicle, channel, value):
-    if channel in ['yaw', 'y', 'all']:
-        vehicle.channels.overrides['0'] = value
-    if channel in ['throttle', 't', 'all']:
-        vehicle.channels.overrides['1'] = value
-    if channel in ['roll', 'r', 'all']:
-        vehicle.channels.overrides['2'] = value
-    if channel in ['pitch', 'p', 'all']:
-        vehicle.channels.overrides['3'] = value
+    if channel == 'all':
+        for c in vehicle.channels.overrides:
+            c = None
+        return
+
+    c = rc_channel_to_number(channel)
+    vehicle.channels.overrides[str(c)] = value
 
 def rc_channel_to_number(channel):
+    '''
+    Handles mapping of channel names to values.
+    '''
     if channel in ['yaw', 'y']:
-        return 0
+        return 4
     if channel in ['throttle', 't']:
-        return 1
-    if channel in ['roll', 'r']:
-        return 2
-    if channel in ['pitch', 'p']:
         return 3
+    if channel in ['roll', 'r']:
+        return 1
+    if channel in ['pitch', 'p']:
+        return 2
 
 override_counter = [0,0,0,0]
 override_lock = threading.Lock()
-def override_interval(vehicle, channel, value, time):
+def override_interval(vehicle, channel, value, duration):
     '''
     Method for setting RC overrides for a set interval. Supposed to be executed
     in its own thread as not to block the rest of the program.
@@ -36,19 +40,23 @@ def override_interval(vehicle, channel, value, time):
             value: value for override. Typically in [1000, 2000]
             time: time for override in seconds. (float)
     '''
-    global override_counter
-    global override_lock
-    channel_number = rc_channel_to_number(channel)
+    def thread_func(vehicle, channel, value, duration):
+        global override_counter
+        global override_lock
+        channel_number = rc_channel_to_number(channel)
 
-    with counter_lock:
-        override_counter[channel_number] += 1 #Add one to indicate thread is running
-    set_rc_override(vehicle, channel, value)
-    time.sleep(time)
+        with override_lock:
+            override_counter[channel_number-1] += 1 #Add one to indicate thread is running
+        set_rc_override(vehicle, channel, value)
+        time.sleep(duration)
 
-    with counter_lock:
-        override_counter[channel_number] -= 1 #Thread no longer running
-    if override_counter[channel_number] == 0: #If no one else is running, stop the override.
-        set_rc_override(vehicle, channel, None)
+        with override_lock:
+            override_counter[channel_number-1] -= 1 #Thread no longer running
+        if override_counter[channel_number-1] == 0: #If no one else is running, stop the override.
+            set_rc_override(vehicle, channel, None)
+        #assert override_counter >= 0, 'Override thread counter < 0!'
+    args = (vehicle, channel, value, duration)
+    threading.Thread(target=thread_func, args=args).start()
 
 def controller_priority(vehicle):
     '''
@@ -58,9 +66,11 @@ def controller_priority(vehicle):
     last_values = [0,0,0,0]
     while True:
         for i_channel in range(4):
-            if abs(vehicle.channels[str(i_channel)] - last_values[i_channel]) > 10:
+            if abs(vehicle.channels[str(i_channel+1)] - last_values[i_channel]) > 10:
                 set_rc_override(vehicle, 'all', None)
-                last_values[i_channel] = vehicle.channels[i_channel]
+                last_values[i_channel] = vehicle.channels[str(i_channel+1)]
+                print 'Detected controller activity!'
+        time.sleep(0.1)
 
 
 
@@ -77,6 +87,23 @@ def set_home(vehicle, lat=1, lon=1,alt=-1):
         lat, lon, alt)    # param 5 ~ 7 latitude, longitude, altitude
     # send command to vehicle
     vehicle.send_mavlink(msg)
+
+'''def set_home(vehicle, lat=1, lon=1,alt=-1):
+    msg = vehicle.message_factory.set_home_position_encode(
+        0,      # target system
+        lat,
+        lon,
+        alt,
+        0.0,          # param 5, x
+        0.0,          # param 6, y
+        0.0,          # param 7, z
+        [0.0,0.0,0.0,0.0],          # param 8, q
+        0.0,          # param 9, approach x
+        0.0,          # param 10, approach y
+        0.0           # param 11, approach z
+        )
+    # send command to vehicle
+    vehicle.send_mavlink(msg)'''
 
 def condition_yaw(vehicle, heading, direction=1, rate=20, relative=False):
     if relative:
@@ -275,11 +302,39 @@ def simple_rel_move(vehicle, dir, dist=0.1):
 
     send_ned_target_rel(vehicle, x*dist, y*dist)
     return 1
-    
+
 def get_command(conn):
     return struct.unpack('<c',conn.read(struct.calcsize('<c')))[0]
 
 def get_data(conn, dtype):
+    if type(dtype) == str:
+        d_len = struct.unpack('<L',conn.read(struct.calcsize('<L')))[0]
+        d_len /= struct.calcsize('<'+dtype)
+
+        encod = '<'+str(d_len)+dtype
+        data = struct.unpack(encod,conn.read(struct.calcsize(encod)))
+        return data
+    else:
+        print('invalid dtype: %s, must be string'%dtype)
+        return None
+
+def send_data(conn, data):
+    if type(data) == tuple:
+        dtype = type(data[0])
+        for d in data:
+            if dtype != type(d):
+                print('Error: trying to send mixed tuple')
+                return -1
+
+        if dtype == float:
+            encod = '<' + str(len(data)) + 'f'
+
+    d_len = struct.calcsize(data)
+    conn.write(struct.pack('<L', dlen))
+    conn.write(struct.pack(encod, data))
+    conn.flush()
+
+
     if type(dtype) == str:
         d_len = struct.unpack('<L',conn.read(struct.calcsize('<L')))[0]
         d_len /= struct.calcsize('<'+dtype)
