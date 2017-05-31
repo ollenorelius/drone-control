@@ -8,6 +8,8 @@ import numpy as np
 import params as p
 import time
 import pickle
+import threading
+import utils as u
 
 picSize = (640,480)
 
@@ -49,7 +51,8 @@ def send_command(cmd, arg=None):
             RC_connection.write(struct.pack('<L', struct.calcsize('<ff')))
             RC_connection.write(struct.pack('<ff', arg[0], arg[1]))
         else:
-            print('Invalid argument: %s'%arg)
+            print('Invalid argument: ', end='')
+            print(arg[0])
 
     RC_connection.flush()
 
@@ -126,15 +129,138 @@ button_land = tkinter.Button(root,
                                     command= button_click_land)
 button_land.pack()
 
+yaw_pid_active = False
+yaw_pid_active_tk = tkinter.BooleanVar()
+check_yaw_pid = tkinter.Checkbutton(root,
+                                    text='Yaw PID active',
+                                    variable=yaw_pid_active_tk)
+check_yaw_pid.pack()
+
+pos_pid_active = False
+pos_pid_active_tk = tkinter.BooleanVar()
+check_pos_pid = tkinter.Checkbutton(root,
+                                    text='Pos PID active',
+                                    variable=pos_pid_active_tk)
+check_pos_pid.pack()
+
 root.update()
 server_socket = socket.socket()
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server_socket.connect(('biffen.local', 8001))
 connection = server_socket.makefile('rwb')
 
+bboxes = []
+bbox_time = time.time()
+
+'''tracker_window = tkinter.Tk()
+points = []
+
+def tracker_thread():
+    global points
+    last_point = None
+    while(True):
+        send_command(cmd=b'o')
+        pos = utils.get_data(RC_connection, 'f')
+
+        if pos != last_point:
+            points.append(pos)
+            last_point = pos'''
+class PID():
+    var = 0
+    accumulated_error = 0
+    last_error = 0
+    kp = 100
+    kd = 0
+    ki = 0
+    i_max = 100
+    setpoint = 0
+    last_loop = 0
+    first_run = True
+
+    def __init__(self, kp, kd, ki, setpoint=0):
+        self.kp = kp
+        self.kd = kd
+        self.ki = ki
+        self.setpoint = setpoint
+
+    def update(self, value):
+        self.var = value
+        error = self.var - self.setpoint
+        dt = time.time() - self.last_loop
+        D = (error - self.last_error)/dt
+        I = error * dt + self.accumulated_error
+        if I > self.i_max:
+            I = self.i_max
+        elif I < -self.i_max:
+            I = -self.i_max
+        pid_out = error * self.kp + self.kd * D + self.ki * I
+        self.last_error = error
+        self.last_loop = time.time()
+
+        if not self.first_run:
+            return pid_out
+        else:
+            self.first_run = False
+            return 0
+
+def yaw_pid_thread():
+    angle_to_car = 0
+    yaw_pid = PID(kp=200, kd=0, ki=0)
+    dt = 0.1
+    global yaw_pid_active
+    while True:
+        time.sleep(dt) #only run PID loop every dt seconds
+        if yaw_pid_active:
+            #if bboxes are older than dt, we processed them last frame.
+            if time.time()-bbox_time < dt:
+                if len(bboxes) > 0:
+                    best_box = bboxes[0]
+                    for box in bboxes:
+                        if box.confidence > best_box.confidence:
+                            best_box = box
+                    box_center_x = (best_box.coords[0] + best_box.coords[2]) / 2
+                    box_center_x = box_center_x - 0.5
+                    cam_x_fov = 62.2*np.pi/180
+                    angle_to_car = box_center_x * cam_x_fov
+
+                    pid_out = yaw_pid.update(angle_to_car)
+
+                    print('Angle PID: %s'%pid_out)
+                    send_command(cmd='x', arg=(float(pid_out), float(dt)))
+
+def pos_pid_thread():
+    pos_pid = PID(kp=30, kd=0, ki=0)
+    dt = 0.1
+    global pos_pid_active
+    while True:
+        time.sleep(dt) #only run PID loop every dt seconds
+        if pos_pid_active:
+            #if bboxes are older than dt, we processed them last frame.
+            if time.time()-bbox_time < dt:
+                if len(bboxes) > 0:
+                    best_box = bboxes[0]
+                    for box in bboxes:
+                        if box.confidence > best_box.confidence:
+                            best_box = box
+
+                    pos = u.get_relative_target_coords_fixed_drone([best_box.coords])
+                    dist_to_car = pos[0][1]
+                    pid_out = pos_pid.update(dist_to_car)
+                    print('car pos is: ', end='')
+                    print(pos)
+                    print('Pos PID: %s'%pid_out)
+                    send_command(cmd='v', arg=(float(-pid_out), float(dt)))
+
+
+threading.Thread(target=yaw_pid_thread, daemon=True).start()
+threading.Thread(target=pos_pid_thread, daemon=True).start()
+
 pickle_stream = io.BytesIO()
 image_stream = io.BytesIO()
+
 while True:
+    yaw_pid_active = yaw_pid_active_tk.get()
+    pos_pid_active = pos_pid_active_tk.get()
     # Read the length of the image as a 32-bit unsigned int. If the
     # length is zero, quit the loop
     t = time.time()
@@ -145,6 +271,7 @@ while True:
     pickle_stream.write(connection.read(pickle_len))
     pickle_stream.seek(0)
     bboxes = pickle.loads(pickle_stream.read())
+    bbox_time = time.time()
 
     connection.write(struct.pack('<c', b'p'))
     connection.flush()

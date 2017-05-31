@@ -8,7 +8,8 @@ import params as p
 import time
 import pickle
 
-from forward_net import NeuralNet, BoundingBox
+from forward_net import NeuralNet
+from utils import BoundingBox
 from queue import Queue
 import threading
 
@@ -67,7 +68,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
             t = time_op(t, 'recv command')
             if command != b'':
                 #print(command)
-                if command == b'p': #send latest pic
+                if command == b'p':
                     last_pic.save(image_stream, format='jpeg', quality=85, thumbnail=None)
                     t = time_op(t, 'save pic')
                     client_connection.write(struct.pack('<L', image_stream.tell()))
@@ -81,7 +82,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
                     image_stream.seek(0)
                     image_stream.truncate()
 
-                elif command == b'c': #get pic, run NN, send result
+                elif command == b'c':
                     camera_connection.write(b'p')
                     camera_connection.flush()
                     t = time_op(t, 'send cam request')
@@ -110,7 +111,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
                     image_stream.truncate()
 
                     bboxes = result_queue.get(False)
-                    box_pickle = pickle.dumps(bboxes, protocol=1)
+                    box_pickle = pickle.dumps(bboxes, protocol=3)
                     pickle_size = len(box_pickle)
                     t = time_op(t, 'pickle')
                     client_connection.write(struct.pack('<L', pickle_size))
@@ -119,7 +120,8 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
                     t = time_op(t, 'send pickle')
 
                     last_pic = image
-                elif command == b'r': #get pic, no processing
+
+                elif command == b'd':
                     camera_connection.write(b'p')
                     camera_connection.flush()
                     t = time_op(t, 'send cam request')
@@ -136,11 +138,32 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
                     # processing on it
                     image_stream.seek(0)
                     image = Image.open(image_stream)
+                    #image.load()
+                    #image.verify()
 
-                    t = time_op(t, 'open pic')
+                    t = time_op(t, 'open pic & process')
+                    job_queue.put(image)
+                    job_queue.join()
+                    t = time_op(t, 'NN')
 
                     image_stream.seek(0)
                     image_stream.truncate()
+
+                    bboxes = result_queue.get(False)
+
+                    box_count = len(bboxes)
+                    client_connection.write(struct.pack('<L', box_count))
+                    for box in bboxes:
+                        data = [box.coords[0],
+                            box.coords[1],
+                            box.coords[2],
+                            box.coords[3],
+                            box.confidence,
+                            box.classification]
+                        print(data)
+                        client_connection.write(struct.pack('<ffffff',data[0],data[1],data[2],data[3],data[4],data[5]))
+                    client_connection.flush()
+                    t = time_op(t, 'send tuples')
 
                     last_pic = image
     except:
@@ -155,7 +178,6 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
 
 def NNRunner(input_queue, output_queue):
     nn = NeuralNet(picSize, 'normal_fast_DO05_class_fix3_anch')
-    sys.stdout.flush()
     while True:
         pic = input_queue.get(True)
         boxes = nn.run_images([np.asarray(pic.resize((p.IMAGE_SIZE,p.IMAGE_SIZE)))], cutoff=0.35)

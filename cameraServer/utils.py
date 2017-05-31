@@ -310,3 +310,58 @@ def delta_to_box(delta, anchor):
     ret_boxes[:,3] = h
 
     return ret_boxes
+
+def get_data(conn, dtype):
+    if type(dtype) == str:
+        d_len = struct.unpack('<L',conn.read(struct.calcsize('<L')))[0]
+        d_len /= struct.calcsize('<'+dtype)
+
+        encod = '<'+str(d_len)+dtype
+        data = struct.unpack(encod,conn.read(struct.calcsize(encod)))
+        return data
+    else:
+        print('invalid dtype: %s, must be string'%dtype)
+        return None
+
+def get_relative_target_coords_fixed_drone(centers):
+
+    '''
+    NOTE: This version assumes the drone is level, and so will not give accurate results.
+    If pose can be retreived, prefer the version in test_scripts/utils.py
+
+    Transforms picture coordinates to local coordinate system.
+    This assumes camera is mounted at 45 degrees to the vertical, but angle can
+    be modified by cam_mount_angle.
+    Input:
+        centers: list of coord tuples in [0,1] representing found objects in image
+    returns:
+        positions: coord tuples for all objects found: (x,y) in meters from drone along ground level
+    '''
+
+    pi = 3.14159265
+    pitch = 0
+    roll = 0
+
+    h = 1
+
+    cam_mount_angle = pi/4
+    cam_x_fov = 62.2*pi/180
+    cam_y_fov = 48.8*pi/180
+    positions = []
+    for c in centers:
+        phi_x = (c[0]-0.5)*cam_x_fov
+        phi_y = -(c[1]-0.5)*cam_y_fov
+
+        theta_y = pitch + cam_mount_angle + phi_y
+        theta_x = phi_x
+
+
+        y = np.tan(theta_y) * h
+        r = np.sqrt(y**2+h**2)
+        x = r * np.tan(theta_x)
+        '''print('phi = %s,%s'%(phi_x, phi_y))
+        print('pitch = %s, roll = %s'%(pitch, roll))
+        print('theta = %s,%s'%(theta_x, theta_y))
+        print('x,y,r,h = %s,%s,%s,%s'%(x,y,r,h))'''
+        positions.append((x,y))
+    return positions

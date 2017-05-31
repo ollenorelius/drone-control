@@ -174,7 +174,7 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
         camera_connection.close()
         inbound_socket.close()
         camera_socket.close()
-    return 0
+        return 0
 
 def NNRunner(input_queue, output_queue):
     nn = NeuralNet(picSize, 'normal_fast_DO05_class_fix3_anch')
