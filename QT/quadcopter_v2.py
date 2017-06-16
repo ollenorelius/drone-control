@@ -6,18 +6,20 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-import os.path, PIL
+import os.path
 from PyQt5 import QtCore, QtGui, QtWidgets
 import socket
 import struct
 from PIL import Image, ImageQt, ImageDraw, ImageFont
-import os, sys
+import os
+import sys
 import time
 import pickle
 import threading
 import io
-import resources
 import numpy as np
+
+
 class Ui_MainWindow(object):
 
     RC_socket = socket.socket()
@@ -47,9 +49,9 @@ class Ui_MainWindow(object):
         threading.Thread(target=self.camera_thread, daemon=True).start()
 
     def draw_boxes(self, boxes):
-        mask = Image.new('RGBA', self.picSize, (255,255,255,0))
+        mask = Image.new('RGBA', self.picSize, (255, 255, 255, 0))
         d = ImageDraw.Draw(mask)
-        fnt = ImageFont.truetype('/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf', 12)
+        fnt = ImageFont.truetype('/usr/share/fonts/truetype/ubuntu-font-family/UbuntuMono-R.ttf', 16)
         txt_offset_x = 0
         txt_offset_y = 20
         for box in boxes:
@@ -57,22 +59,29 @@ class Ui_MainWindow(object):
                         box.coords[1]*self.picSize[1],
                         box.coords[2]*self.picSize[0],
                         box.coords[3]*self.picSize[1]]
-            d.rectangle(p_coords, outline='red')
-            #print('drawing box at ', end='')
-            #print([x for x in box.coords])
+            if box.classification == 1:
+                box_color = 'red'
+            elif box.classification == 0:
+                box_color = 'blue'
+            else:
+                box_color = 'green'
+            d.rectangle(p_coords, outline=box_color)
+
             textpos = (p_coords[0] - txt_offset_x, p_coords[1] - txt_offset_y)
-            d.text(textpos, 'Class %s at %s confidence'%(box.classification,box.confidence), font=fnt, fill='red')
+            d.text(textpos, 'Class %s at %s confidence' %
+                   (box.classification, box.confidence),
+                   font=fnt, fill=box_color)
 
         return mask
 
     def send_command(self, cmd, arg=None):
         self.RC_connection.write(struct.pack('<c', bytes(cmd, encoding='ascii')))
-        if arg != None:
+        if arg is not None:
             if type(arg) == str:
                 self.RC_connection.write(struct.pack('<L', len(arg)))
                 self.RC_connection.write(
-                            struct.pack('<%ds'%len(arg),
-                                bytes(arg, encoding='ascii')))
+                            struct.pack('<%ds' % len(arg),
+                                        bytes(arg, encoding='ascii')))
             elif type(arg) == float:
                 self.RC_connection.write(struct.pack('<L', struct.calcsize('<f')))
                 self.RC_connection.write(struct.pack('<f', arg))
