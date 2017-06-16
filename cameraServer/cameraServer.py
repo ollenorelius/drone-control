@@ -1,4 +1,4 @@
-#/usr/bin/python3
+#!/usr/bin/python3
 
 import socket
 import io
@@ -27,10 +27,11 @@ image_lock = threading.Lock()
 
 image = b'asdf'
 
+
 def time_op(start, name):
     tt = time.time() - start
     if timing:
-        print('Time taken for %s: %s'%(name, tt))
+        print('Time taken for %s: %s' % (name, tt))
     return time.time()
 
 
@@ -38,22 +39,23 @@ def camera_thread():
     global image
     cam_stream = io.BytesIO()
     for foo in camera.capture_continuous(output=cam_stream,
-                                        format='jpeg',
-                                        use_video_port=True,
-                                        quality=15,
-                                        thumbnail=None):
+                                         format='jpeg',
+                                         use_video_port=True,
+                                         quality=15,
+                                         thumbnail=None):
         cam_stream.seek(0)
         image = cam_stream.read()
         cam_stream.seek(0)
         cam_stream.truncate()
 
-        #if no clients are connected, just chill ad wait to save power.
+        # if no clients are connected, just chill ad wait to save power.
         while(threading.active_count() < 3):
             time.sleep(0.2)
 
+
 def network_thread(inbound_socket):
     client_connection = inbound_socket.makefile('rwb')
-    buf = bytearray([0])
+    # buf = bytearray([0])
     global image
     try:
         while True:
@@ -61,17 +63,14 @@ def network_thread(inbound_socket):
             command = client_connection.read(1)
             if command != b'':
                 t = time_op(t, 'recv command')
-                #print(command)
                 if command == b'p':
                     t = time.time()
-                    #print(image_lock)
-                    #with image_lock:
-                    #buf = image
-                    t = time_op(t, 'capture')
-                    client_connection.write(struct.pack('<L', len(image)))
-                    t = time_op(t, 'send header')
-                    # Rewind the stream and send the image data over the wire
-                    client_connection.write(image)
+                    with image_lock:
+                        t = time_op(t, 'capture')
+                        client_connection.write(struct.pack('<L', len(image)))
+                        t = time_op(t, 'send header')
+                        # Rewind the stream and send the image data over the wire
+                        client_connection.write(image)
                     client_connection.flush()
                     t = time_op(t, 'send data')
             else:
@@ -80,6 +79,7 @@ def network_thread(inbound_socket):
         print('Error: %s'%sys.exc_info()[0], flush=True)
         print('Error: %s'%sys.exc_info()[1], flush=True)
         print('Error: %s'%sys.exc_info()[2], flush=True)
+
 
 threading.Thread(target=camera_thread, daemon=True).start()
 while True:

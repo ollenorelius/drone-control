@@ -1,6 +1,8 @@
 import tensorflow as tf
 import params as p
 import numpy as np
+from tensorflow.python.framework import graph_util
+
 
 def softmax(x):
     """Compute softmax values for each sets of scores in x."""
@@ -10,28 +12,35 @@ def softmax(x):
 
 def create_anchors(grid_size):
     """
-        Creates a list of all anchor coordinates.
-        Input: Grid size to distribute anchors over.
+    Create a list of all anchor coordinates.
 
-        Returns: (K*X*Y) x 4 tensor containing coordinates in (x,y,w,h)-form
-            in a, y, x order:
+    Input: Grid size to distribute anchors over.
+
+    Returns: (K*X*Y) x 4 tensor containing coordinates in (x,y,w,h)-form
+        in a, y, x order:
     """
-    x = np.linspace(0,1,grid_size)
-    xv, yv = np.meshgrid(x,x)
+    x = np.linspace(0, 1, grid_size)
+    xv, yv = np.meshgrid(x, x)
     anchors = []
     for ix in range(len(xv)):
         for iy in range(len(yv)):
             for i in range(p.ANCHOR_COUNT):
-                anchors.append((xv[ix,iy], yv[ix,iy], p.ANCHOR_SIZES[i][0]/2, p.ANCHOR_SIZES[i][1]/2))
+                anchors.append((xv[ix, iy],
+                                yv[ix, iy],
+                                p.ANCHOR_SIZES[i][0]/2,
+                                p.ANCHOR_SIZES[i][1]/2))
 
-    assert (len(anchors), len(anchors[1])) == (p.ANCHOR_COUNT * p.GRID_SIZE**2, 4), \
-     "ERROR: create_anchors made a matrix of shape %i,%i" % (len(anchors), len(anchors[1]))
+    assert (len(anchors), len(anchors[1])) == \
+           (p.ANCHOR_COUNT * p.GRID_SIZE**2, 4), \
+        "ERROR: create_anchors made a matrix of shape %i,%i, should be %i,%i" \
+        % (len(anchors), len(anchors[1]), p.ANCHOR_COUNT * p.GRID_SIZE**2, 4)
 
-    return np.array(anchors)
+    return np.asarray(anchors)
+
 
 def intersection(bbox, anchors):
     """
-    Computes intersection of a SINGLE bounding box and all anchors.
+    Compute intersection of a SINGLE bounding box and all anchors.
 
     bbox: coordinate tensor: 4x1 (x, y, w, h)
     anchors: coordinate tensor: 4x(X*Y*K) with XY being number of grid points
@@ -39,28 +48,29 @@ def intersection(bbox, anchors):
     returns: a 1x(X*Y*K) tensor containing all anchor intersections.
 
     """
-
-    assert np.shape(bbox) == (4,), \
-                    "Invalid shape of bbox in utils.intersection:%s"%np.shape(bbox)
+    """assert np.shape(bbox)[0] == 4, \
+        "Invalid shape of bbox in utils.intersection: %s" % str(np.shape(bbox))
 
     assert np.shape(anchors)[0] == 4, \
-                    "Invalid shape of anchors in utils.intersection!"
-    bbox_t = trans_boxes(np.transpose(bbox))
+        "Invalid shape of anchors in utils.intersection: %s" % str(np.shape(anchors))
+    """
+    bbox_t = np.squeeze(trans_boxes(np.transpose(bbox)))
     anchors_t = trans_boxes(np.transpose(anchors))
 
-    p1 = np.minimum(bbox_t[2], anchors_t[:,2])\
-            - np.maximum(bbox_t[0], anchors_t[:,0])
-    p2 = np.minimum(bbox_t[3], anchors_t[:,3])\
-            - np.maximum(bbox_t[1], anchors_t[:,1])
+    p1 = np.minimum(bbox_t[2], anchors_t[:, 2]) \
+        - np.maximum(bbox_t[0], anchors_t[:, 0])
+    p2 = np.minimum(bbox_t[3], anchors_t[:, 3])\
+        - np.maximum(bbox_t[1], anchors_t[:, 1])
 
-    p1_r = np.maximum(p1,0) #If this is negative, there is no intersection
-    p2_r = np.maximum(p2,0) # so it is rectified
+    p1_r = np.maximum(p1, 0)  # If this is negative, there is no intersection
+    p2_r = np.maximum(p2, 0)  # so it is rectified
 
-    return np.multiply(p1_r,p2_r)
+    return np.multiply(p1_r, p2_r)
+
 
 def union(bbox, anchors, intersections):
     """
-    Computes union of a SINGLE bounding box and all anchors.
+    Compute union of a SINGLE bounding box and all anchors.
 
     bbox: coordinate array: 4x1 (x, y, w, h)
     anchors: coordinate array: 4x(X*Y*K) with XY being number of grid points
@@ -71,43 +81,43 @@ def union(bbox, anchors, intersections):
     returns: a 1x(X*Y*K) array containing all anchor unions.
 
     """
-
     assert np.shape(bbox) == (4,), \
-                    "Invalid shape of bbox in utils.union:%s"%np.shape(bbox)
+        "Invalid shape of bbox in utils.union:%s" % np.shape(bbox)
 
     assert np.shape(anchors)[0] == 4, \
-                    "Invalid shape of anchors in utils.union:%s"%np.shape(anchors)
+        "Invalid shape of anchors in utils.union:%s" % np.shape(anchors)
 
     box_area = bbox[2]*bbox[3]
-    anchor_areas = anchors[2,:]*anchors[3,:]
+    anchor_areas = anchors[2, :] * anchors[3, :]
 
     return box_area + anchor_areas - intersections
 
+
 def intersection_over_union(bbox, anchors):
-    '''
-        Computes IOU for all anchors with one bounding box.
+    """
+    Compute IOU for all anchors with one bounding box.
 
-        Inputs:
-            bbox: coordinate array: 4x1 (x, y, w, h)
-            anchors: coordinate array: 4x(X*Y*K) with XY being number of grid points
+    Inputs:
+        bbox: coordinate array: 4x1 (x, y, w, h)
+        anchors: coordinate array: 4x(X*Y*K)
+            with XY being number of grid points
 
-        Returns:
-            IOU: array of IOUs. (XYK) x 1
-
-    '''
-
+    Returns:
+        IOU: array of IOUs. (XYK) x 1
+    """
     intersections = intersection(bbox, anchors)
     unions = union(bbox, anchors, intersections)
 
     return intersections/unions
 
+
 def trans_boxes(coords):
     """
-        Transforms coordinates from x, y, w, h to x1, y1, x2, y2.
+    Transform coordinates from x, y, w, h to x1, y1, x2, y2.
 
-        Input: a Nx4 matrix of coordinates for N boxes.
+    Input: a Nx4 matrix of coordinates for N boxes.
 
-        Returns: a Nx4 matrix of transformed coordinates.
+    Returns: a Nx4 matrix of transformed coordinates.
     """
     coords = np.transpose(coords)
     t_coords = []
@@ -118,13 +128,14 @@ def trans_boxes(coords):
     t_coords = np.transpose(t_coords)
     return t_coords
 
+
 def inv_trans_boxes(coords):
     """
-        Transforms coordinates from x1, y1, x2, y2 to x, y, w, h
+    Transform coordinates from x1, y1, x2, y2 to x, y, w, h.
 
-        Input: a Nx4 matrix of coordinates for N boxes.
+    Input: a Nx4 matrix of coordinates for N boxes.
 
-        Returns: a Nx4 matrix of transformed coordinates.
+    Returns: a Nx4 matrix of transformed coordinates.
     """
     coords = np.transpose(coords)
     t_coords = []
@@ -134,234 +145,235 @@ def inv_trans_boxes(coords):
     t_coords.append(coords[3] - coords[1])
     t_coords = np.transpose(t_coords)
     assert np.shape(t_coords)[1] == 4, \
-            "invalid shape in inv_trans_boxes: %i,%i" % np.shape(t_coords)
+        "invalid shape in inv_trans_boxes: %i,%i" % np.shape(t_coords)
     return t_coords
+
 
 def get_stepped_slice(in_tensor, start, length):
     in_shape = in_tensor.get_shape().as_list()
     in_depth = in_shape[3]
-    stride = (1+4+p.OUT_CLASSES) # gammas + deltas + classes,
-                                 # the number of things for each anchor
-                                 # so we can stride through each anchor
-    tensor_slice = tf.slice(in_tensor, [0,0,0,start],[-1,-1,-1,length])
+    stride = (1+4+p.OUT_CLASSES)
+    """ gammas + deltas + classes,
+    the number of things for each anchor
+    so we can stride through each"""
+    tensor_slice = tf.slice(in_tensor, [0, 0, 0, start], [-1, -1, -1, length])
     for iStride in range(in_depth//stride-1):
         pos = stride*(iStride+1)
         tensor_slice = tf.concat([tensor_slice,
                                  tf.slice(in_tensor,
-                                        [0,0,0,start+pos],
-                                        [-1,-1,-1,length])],3)
+                                          [0, 0, 0, start+pos],
+                                          [-1, -1, -1, length])], 3)
     return tensor_slice
 
+
 def delta_loss(act_tensor, deltas, masks, N_obj):
-    '''
-        Takes the activation volume from the squeezeDet layer, slices out the
-        deltas from position 0 to 4*k.
-        These are then unrolled into a [x*y*k, 4] list of deltas and compared to
-        ground truths with a simple vector norm. The list is filtered using
-        the masks, multiplying all but the main anchor at every grid point by 0.
+    """
+    Calculate delta loss.
 
-        Input:  act_tensor: The entire activation volume
-                                        [batch, X, Y, stride].
-                deltas: Ground truth deltas. [batch, X*Y*ANCHOR_COUNT,4]
+    Takes the activation volume from the squeezeDet layer, slices out the
+    deltas from position 0 to 4*k.
+    These are then unrolled into a [x*y*k, 4] list of deltas and compared to
+    ground truths with a simple vector norm. The list is filtered using
+    the masks, multiplying all but the main anchor at every grid point by 0.
 
-                masks: Binary masks indicating the anchor with
-                maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
-                N_obj: number of ground truth boxes in every image [batch,1]
+    Input:  act_tensor: The entire activation volume
+                                    [batch, X, Y, stride].
+            deltas: Ground truth deltas. [batch, X*Y*ANCHOR_COUNT,4]
 
-        Out: Float representing the average delta loss per grid point across batch
-    '''
+            masks: Binary masks indicating the anchor with
+            maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
+            N_obj: number of ground truth boxes in every image [batch,1]
+
+    Out: Float representing the average delta loss per grid point across batch
+    """
     in_shape = act_tensor.get_shape().as_list()
     batch_size = in_shape[0]
-    in_depth = in_shape[3]
-    masks_unwrap = tf.squeeze(tf.reshape(masks, [batch_size,-1]))
 
-    pred_delta = tf.slice(act_tensor, [0,0,0,0],[-1,-1,-1,4*p.ANCHOR_COUNT])
+    masks_unwrap = tf.squeeze(tf.reshape(masks, [batch_size, -1]))
+
+    pred_delta = tf.slice(act_tensor,
+                          [0, 0, 0, 0],
+                          [-1, -1, -1, 4 * p.ANCHOR_COUNT])
     tf.summary.histogram('predicted_delta', pred_delta)
     pred_delta = tf.reshape(pred_delta,
-                            [batch_size,p.GRID_SIZE*p.GRID_SIZE*p.ANCHOR_COUNT,4])
+                            [batch_size,
+                                p.GRID_SIZE * p.GRID_SIZE * p.ANCHOR_COUNT,
+                                4])
 
     diff_delta = tf.norm(deltas - pred_delta, axis=2)
-    filtered_diff_delta = tf.multiply(diff_delta,tf.to_float(masks_unwrap))
+    filtered_diff_delta = tf.multiply(diff_delta, tf.to_float(masks_unwrap))
 
-    delta_loss_ = tf.pow(filtered_diff_delta,2)
+    delta_loss_ = tf.pow(filtered_diff_delta, 2)
     normal = batch_size
     return tf.reduce_sum(delta_loss_/N_obj)/(normal)
 
+
 def gamma_loss(act_tensor, gammas, masks, N_obj):
-    '''
-        Takes the activation volume from the squeezeDet layer, slices out the
-        gammas from position 4*k to 5*k .
-        These are then unrolled into a [x*y*k, 1] list of gammas and compared to
-        ground truths with a simple vector norm. The list is filtered using
-        the masks, multiplying all but the main anchor at every grid point by 0.
+    """
+    Calculate gamma loss.
 
-        Conj_gamma is used to punish boxes predicted that don't correspond to a
-        ground truth.
+    Takes the activation volume from the squeezeDet layer, slices out the
+    gammas from position 4*k to 5*k .
+    These are then unrolled into a [x*y*k, 1] list of gammas and compared to
+    ground truths with a simple vector norm. The list is filtered using
+    the masks, multiplying all but the main anchor at every grid point by 0.
 
-        Input:  act_tensor: The entire activation volume
-                                        [batch, X, Y, stride].
-                gammas: Ground truth gammas. [batch, X*Y*ANCHOR_COUNT,1]
+    Conj_gamma is used to punish boxes predicted that don't correspond to a
+    ground truth.
 
-                masks: Binary masks indicating the anchor with
-                maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
-                N_obj: number of ground truth boxes in every image [batch,1]
+    Input:  act_tensor: The entire activation volume
+                                    [batch, X, Y, stride].
+            gammas: Ground truth gammas. [batch, X*Y*ANCHOR_COUNT,1]
 
-        Out: Float representing the average gamma loss per grid point across batch
-    '''
+            masks: Binary masks indicating the anchor with
+            maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
+            N_obj: number of ground truth boxes in every image [batch,1]
+
+    Out: Float representing the average gamma loss per grid point across batch
+    """
     in_shape = act_tensor.get_shape().as_list()
     batch_size = in_shape[0]
-    in_depth = in_shape[3]
-    masks_unwrap = tf.squeeze(tf.reshape(masks, [batch_size,-1]))
+    masks_unwrap = tf.squeeze(tf.reshape(masks, [batch_size, -1]))
 
-    #pred_gamma = get_stepped_slice(act_tensor,p.OUT_CLASSES+4,1)
     pred_gamma = tf.sigmoid(tf.slice(act_tensor,
-                            [0,0,0,4*p.ANCHOR_COUNT],
-                            [-1,-1,-1,p.ANCHOR_COUNT]))
+                            [0, 0, 0, 4 * p.ANCHOR_COUNT],
+                            [-1, -1, -1, p.ANCHOR_COUNT]))
     tf.summary.histogram('predicted_gamma', pred_gamma)
     pred_gamma_flat = tf.reshape(pred_gamma,
-                            [batch_size,p.GRID_SIZE*p.GRID_SIZE*p.ANCHOR_COUNT])
+                                 [batch_size,
+                                  p.GRID_SIZE * p.GRID_SIZE * p.ANCHOR_COUNT])
 
     diff_gamma = gammas - pred_gamma_flat
-    filtered_diff_gamma = tf.pow(tf.multiply(diff_gamma,tf.to_float(masks_unwrap)),2)
+    filtered_diff_gamma = tf.pow(
+                            tf.multiply(diff_gamma, tf.to_float(masks_unwrap)),
+                            2)
 
     ibar = 1-masks_unwrap
 
-    conj_gamma = tf.multiply(tf.to_float(ibar), tf.pow(pred_gamma_flat,2))\
-            /(p.GRID_SIZE**2*p.ANCHOR_COUNT-N_obj)
+    conj_gamma = tf.multiply(tf.to_float(ibar), tf.pow(pred_gamma_flat, 2))\
+        / (p.GRID_SIZE ** 2 * p.ANCHOR_COUNT-N_obj)
     tf.summary.histogram('predicted_conjugate_gamma', conj_gamma)
     gamma_loss_ = p.LAMBDA_CONF_P / N_obj * filtered_diff_gamma \
-                    + p.LAMBDA_CONF_N* conj_gamma
+        + p.LAMBDA_CONF_N * conj_gamma
     normal = batch_size
     return tf.reduce_sum(gamma_loss_)/(normal)
 
+
 def class_loss(act_tensor, classes, masks, N_obj):
-    '''
-        Takes the activation volume from the squeezeDet layer, slices out the
-        class scores from position 5*k to the end.
-        These are then unrolled into a [x*y*k, classes] list of scores and compared to
-        ground truths using cross entropy. The list is filtered using
-        the masks, multiplying all but the main anchor at every grid point by 0.
+    """
+    Calculate classification loss.
 
-        Input:  act_tensor: The entire activation volume
-                                        [batch, X, Y, stride].
-                classes: Ground truth classes. [batch, X*Y*ANCHOR_COUNT,classes]
+    Takes the activation volume from the squeezeDet layer, slices out the
+    class scores from position 5*k to the end.
+    These are then unrolled into a [x*y*k, classes] list of scores and
+    compared to ground truths using cross entropy. The list is filtered using
+    the masks, multiplying all but the main anchor at every grid point by 0.
 
-                masks: Binary masks indicating the anchor with
-                maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
-                N_obj: number of ground truth boxes in every image [batch,1]
+    Input:  act_tensor: The entire activation volume
+                                    [batch, X, Y, stride].
+            classes: Ground truth classes. [batch, X*Y*ANCHOR_COUNT,classes]
 
-        Out: Float representing the average gamma loss per grid point across batch
-    '''
+            masks: Binary masks indicating the anchor with
+            maximum IOU for every grid point. [batch, X*Y*ANCHOR_COUNT,1]
+            N_obj: number of ground truth boxes in every image [batch,1]
+
+    Out: Float representing the average gamma loss per grid point across batch
+    """
     in_shape = act_tensor.get_shape().as_list()
     batch_size = in_shape[0]
-    in_depth = in_shape[3]
-    masks_unwrap = tf.to_float(tf.tile(tf.reshape(masks, [-1,1]),[1, p.OUT_CLASSES]))
+    masks_unwrap = tf.to_float(tf.tile(tf.reshape(masks, [-1, 1]),
+                                       [1, p.OUT_CLASSES]))
     classes = tf.to_float(classes)
     gs = p.GRID_SIZE
     k = p.ANCHOR_COUNT
-    #pred_class = get_stepped_slice(act_tensor, 0, p.OUT_CLASSES)
+
     pred_class = tf.slice(act_tensor,
-                            [0,0,0,5*k],
-                            [-1,-1,-1,p.OUT_CLASSES*k])
-    classes_flat = masks_unwrap * tf.reshape(classes, \
-            [batch_size * gs**2 * k,  p.OUT_CLASSES])
+                          [0, 0, 0, 5 * k],
+                          [-1, -1, -1, p.OUT_CLASSES*k])
+    classes_flat = masks_unwrap * tf.reshape(classes,
+                                             [batch_size * gs**2 * k,
+                                              p.OUT_CLASSES])
     tf.summary.histogram('predicted_classes', pred_class)
 
     pred_class = masks_unwrap * tf.reshape(pred_class,
-            [batch_size * gs**2 * k,  p.OUT_CLASSES])
+                                           [batch_size * gs**2 * k,
+                                            p.OUT_CLASSES])
 
     class_loss_ = tf.losses.softmax_cross_entropy(classes_flat, pred_class)
-    return tf.reduce_sum(class_loss_/N_obj)/batch_size
+    return tf.reduce_sum(class_loss_)/batch_size
+
 
 def delta_to_box(delta, anchor):
-
     """
-    Takes a delta and an anchor bounding box,
-     and gives the bounding box predicted.
+    Take a delta and an anchor bounding box and get the bounding box predicted.
 
     In: delta: N x [dx, dy, dw, dh]
         anchor: N x [x, y, w, h]
 
     Out: box: N x [x,y,w,h]
     """
-
-    if delta.shape == [4]:
-        delta = [delta]
-    if anchor.shape == [4]:
-        delta = [anchor]
+    if delta.shape == (4,):
+        delta = np.array([delta])
+    if isinstance(anchor, tuple):
+        anchor = np.asarray(anchor)
+    if anchor.shape == (4,):
+        anchor = np.array([anchor])
 
     N = delta.shape[0]
     d = delta.shape[1]
 
-    assert N == anchor.shape[0], "Delta count must equal anchor count supplied!"
-    assert d == 4, "Dimension 1 of deltas must equal 4! (%s)"%d
+    assert N == anchor.shape[0], \
+        "Delta count must equal anchor count supplied!"
+    assert d == 4, \
+        "Dimension 1 of deltas must equal 4! (%s)" % d
 
+    x = anchor[:, 0] + anchor[:, 2]*delta[:, 0]
+    y = anchor[:, 1] + anchor[:, 3]*delta[:, 1]
 
-    x = anchor[:,0] + anchor[:,2]*delta[:,0]
-    y = anchor[:,1] + anchor[:,3]*delta[:,1]
+    w = anchor[:, 2]*np.exp(delta[:, 2])
+    h = anchor[:, 3]*np.exp(delta[:, 3])
 
-    w = anchor[:,2]*np.exp(delta[:,2])
-    h = anchor[:,3]*np.exp(delta[:,3])
-
-    ret_boxes = np.zeros([N,d])
-    ret_boxes[:,0] = x
-    ret_boxes[:,1] = y
-    ret_boxes[:,2] = w
-    ret_boxes[:,3] = h
+    ret_boxes = np.zeros([N, d])
+    ret_boxes[:, 0] = x
+    ret_boxes[:, 1] = y
+    ret_boxes[:, 2] = w
+    ret_boxes[:, 3] = h
 
     return ret_boxes
 
-def get_data(conn, dtype):
-    if type(dtype) == str:
-        d_len = struct.unpack('<L',conn.read(struct.calcsize('<L')))[0]
-        d_len /= struct.calcsize('<'+dtype)
 
-        encod = '<'+str(d_len)+dtype
-        data = struct.unpack(encod,conn.read(struct.calcsize(encod)))
-        return data
-    else:
-        print('invalid dtype: %s, must be string'%dtype)
-        return None
+def write_graph_to_pb(sess, output_node_names, name, folder):
+    """
+    Write given session graph to protobuf format.
 
-def get_relative_target_coords_fixed_drone(centers):
+    Input: sess: tensorflow session containing graph to save.
+        output_node_names: Names of desired output nodes.
+        name: filename to save as
+        folder: folder to save in
 
-    '''
-    NOTE: This version assumes the drone is level, and so will not give accurate results.
-    If pose can be retreived, prefer the version in test_scripts/utils.py
-
-    Transforms picture coordinates to local coordinate system.
-    This assumes camera is mounted at 45 degrees to the vertical, but angle can
-    be modified by cam_mount_angle.
-    Input:
-        centers: list of coord tuples in [0,1] representing found objects in image
-    returns:
-        positions: coord tuples for all objects found: (x,y) in meters from drone along ground level
-    '''
-
-    pi = 3.14159265
-    pitch = 0
-    roll = 0
-
-    h = 1
-
-    cam_mount_angle = pi/4
-    cam_x_fov = 62.2*pi/180
-    cam_y_fov = 48.8*pi/180
-    positions = []
-    for c in centers:
-        phi_x = (c[0]-0.5)*cam_x_fov
-        phi_y = -(c[1]-0.5)*cam_y_fov
-
-        theta_y = pitch + cam_mount_angle + phi_y
-        theta_x = phi_x
+    Output: None.
+    """
+    minimal_graph = \
+        graph_util.convert_variables_to_constants(sess,
+                                                  sess.graph_def,
+                                                  [output_node_names])
+    tf.train.write_graph(minimal_graph, folder, '%s.pb' % name, as_text=False)
+    # quant_command = build_quant_command(folder, output_node_names, name)
+    # call(quant_command)
+    return 0
 
 
-        y = np.tan(theta_y) * h
-        r = np.sqrt(y**2+h**2)
-        x = r * np.tan(theta_x)
-        '''print('phi = %s,%s'%(phi_x, phi_y))
-        print('pitch = %s, roll = %s'%(pitch, roll))
-        print('theta = %s,%s'%(theta_x, theta_y))
-        print('x,y,r,h = %s,%s,%s,%s'%(x,y,r,h))'''
-        positions.append((x,y))
-    return positions
+def build_quant_command(folder, out_name, file_name):
+    """Helper to build the long command string."""
+    quant_script = '/home/ec2-user/src/tensorflow/bazel-bin/'\
+        + 'tensorflow/tools/quantization/quantize_graph'
+
+    input_pb = '%s/%s.pb' % (folder, file_name)
+    output_pb = '%s/%s_quant.pb' % (folder, file_name)
+    mode = 'eightbit'
+
+    final_string = quant_script + " --input=%s --output=%s" \
+                                + "--mode=%s --output_node_names=%s"\
+        % (input_pb, output_pb, mode, out_name)
+
+    return final_string.split(' ')

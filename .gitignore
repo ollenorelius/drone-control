@@ -70,3 +70,5 @@ test_scripts/quad_coords/
 cameraServer/rework/networks/
 
 test_scripts/test\.png
+
+cameraServer/filters/
