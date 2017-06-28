@@ -14,6 +14,13 @@ import socket
 import RC_client_handler as RC_client
 import threading
 import RC_utils
+import RPi.GPIO as GPIO
+
+Buzzer = 11
+GPIO.setmode(GPIO.BOARD)  # Numbers GPIOs by physical location
+GPIO.setup(Buzzer, GPIO.OUT)  # Set pins' mode is output
+global Buzz  # Assign a global variable to replace GPIO.PWM
+Buzz = GPIO.PWM(Buzzer, 440)  # 440 is initial frequency.
 
 inbound_socket = socket.socket()
 inbound_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

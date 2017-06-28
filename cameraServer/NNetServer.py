@@ -30,8 +30,12 @@ inbound_socket.listen(0)
 job_queue = Queue()
 result_queue = Queue()
 
-last_pic = Image.new('RGBA', picSize, (255, 255, 255, 0))
+last_pic = Image.new('RGB', picSize, (155, 245, 210, 0))
 timing = False
+
+if len(sys.argv) > 1 and sys.argv[1] == '-test':
+    for i in range(20):
+        job_queue.put(last_pic.resize((512,512)))
 
 
 def time_op(start, name):
@@ -214,11 +218,11 @@ def client_handler(inbound_socket, addr, job_queue, result_queue):
 
 def NNRunner(input_queue, output_queue):
     """Thread for running the neural net."""
-    nn = NeuralNet('tiny_res')
+    nn = NeuralNet('tiny_res_slow')
     # nn.export_weights()
     while True:
         pic = input_queue.get(True).resize((p.IMAGE_SIZE, p.IMAGE_SIZE))
-        boxes = nn.run_images([np.asarray(pic)], cutoff=0.4)
+        boxes = nn.run_images([np.asarray(pic)], cutoff=0.2)
         output_queue.put(boxes)
         input_queue.task_done()
 

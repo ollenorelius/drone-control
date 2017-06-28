@@ -2,6 +2,21 @@
 import dronekit as dk
 import RC_utils
 import sys
+import threading
+import time
+import RPi.GPIO as GPIO
+
+
+def beep(duration, freq):
+    """Emit a short beep."""
+    def thread_func(duration, freq):
+        global Buzz
+        Buzz.ChangeFrequency(freq)  # 440 is initial frequency.
+        Buzz.start(50)
+        time.sleep(duration)
+        Buzz.stop()
+        return 0
+    threading.Thread(target=thread_func, args=(duration, freq)).start()
 
 
 def client_handler(inbound_socket, addr, vehicle):
@@ -88,6 +103,10 @@ def client_handler(inbound_socket, addr, vehicle):
                        vehicle.attitude.pitch,
                        vehicle.attitude.yaw)
                 RC_utils.send_data(client_connection, att)
+
+            elif command == b'q':
+                freq, dur = RC_utils.get_data(client_connection, 'f')
+                beep(dur, freq)
 
         '''except:
             print('Error: %s'%sys.exc_info()[0])

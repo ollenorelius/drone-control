@@ -17,6 +17,7 @@ import time
 import pickle
 import threading
 import io
+import resources
 import numpy as np
 
 
@@ -42,8 +43,12 @@ class Ui_MainWindow(object):
     bbox_lock = threading.Lock()
 
     picSize = (640, 480)
+    beep = None
+
+    target_class = 0
 
     def __init__(self):
+        self.beep = Beeper(self)
         threading.Thread(target=self.yaw_pid_thread, daemon=True).start()
         threading.Thread(target=self.pos_pid_thread, daemon=True).start()
         threading.Thread(target=self.camera_thread, daemon=True).start()
@@ -251,8 +256,7 @@ class Ui_MainWindow(object):
 "Hold Mode"))
         self.armBtn.setText(_translate("MainWindow", "Arm"))
         self.takeOffBtn.setText(_translate("MainWindow", "Take Off"))
-        self.guidedBtn.setText(_translate("MainWindow", "Guided\n"
-"Mode"))
+        self.guidedBtn.setText(_translate("MainWindow", "Finding cars"))
         self.posCheckBox.setText(_translate("MainWindow", "Position PID Active"))
         self.yawCheckBox.setText(_translate("MainWindow", "Yaw PID Active"))
         self.takeOffBtn.clicked.connect(self.takeOff)
@@ -260,7 +264,7 @@ class Ui_MainWindow(object):
         self.armBtn.clicked.connect(self.arm)
         self.disarmBtn.clicked.connect(self.disarm)
         self.posHoldBtn.clicked.connect(self.positionHold)
-        self.guidedBtn.clicked.connect(self.loadStream)
+        self.guidedBtn.clicked.connect(self.guidedMode)
         self.posCheckBox.stateChanged.connect(self.pos_check)
         self.yawCheckBox.stateChanged.connect(self.yaw_check)
 
@@ -291,8 +295,12 @@ class Ui_MainWindow(object):
         self.send_command(cmd='m', arg='POSHOLD')
 
     def guidedMode(self):
-        #self.guidedBtn.setText("Scanning")
-        self.send_command(cmd='m', arg='GUIDED')
+        if self.target_class == 1:
+            self.guidedBtn.setText("Finding cars")
+            self.target_class = 0
+        elif self.target_class == 0:
+            self.guidedBtn.setText("Finding cups")
+            self.target_class = 1
 
     def loadStream(self):
         if (os.path.isfile("/Users/Markus/Infotiv/QuadCopterQT/QuadCopter/stream.jpg")):
@@ -301,57 +309,76 @@ class Ui_MainWindow(object):
                 "background-image: url(/Users/Markus/Infotiv/QuadCopterQT/QuadCopter/stream.jpg);")
 
     def yaw_pid_thread(self):
+        """PID controller for yaw."""
         angle_to_car = 0
         yaw_pid = PID(kp=200, kd=0, ki=0)
         dt = 0.1
         while True:
-            time.sleep(dt) #only run PID loop every dt seconds
+            time.sleep(dt)  # only run PID loop every dt seconds
             if self.yaw_pid_active:
-                #if bboxes are older than dt, we processed them last frame.
+                self.beep.active = True
+                # if bboxes are older than dt, we processed them last frame.
                 if time.time()-self.bbox_time < dt:
                     with self.bbox_lock:
-                        if len(self.bboxes) > 0:
-                            best_box = self.bboxes[0]
-                            for box in self.bboxes:
-                                if box.confidence > best_box.confidence:
-                                    best_box = box
-
+                        best_box = self.filter_boxes(self.bboxes, self.target_class)
+                        if best_box is not None:
                             box_center_x = (best_box.coords[0] + best_box.coords[2]) / 2
                             box_center_x = box_center_x - 0.5
                             cam_x_fov = 62.2*np.pi/180
                             angle_to_car = box_center_x * cam_x_fov
 
                             pid_out = yaw_pid.update(angle_to_car)
-
+                            if abs(pid_out) < 10:
+                                self.beep.angle_state = 2
+                            else:
+                                self.beep.angle_state = 1
                             print('Angle PID: %s'%pid_out)
                             self.send_command(cmd='x', arg=(float(pid_out), float(dt)))
+                        else:
+                            self.send_command(cmd='x', arg=(float(50), float(dt*0.9)))
+                            self.beep.angle_state = 0
+            else:
+                self.beep.active = False
 
     def pos_pid_thread(self):
-        pos_pid = PID(kp=10, kd=0, ki=0)
+        """PID controller for position."""
+        pos_pid = PID(kp=30, kd=0, ki=0)
         dt = 0.1
+        pos_setpoint = 1  # Meters to target
         while True:
             time.sleep(dt) #only run PID loop every dt seconds
             if self.pos_pid_active:
                 #if bboxes are older than dt, we processed them last frame.
                 if time.time()-self.bbox_time < dt:
                     with self.bbox_lock:
-                        if len(self.bboxes) > 0:
-                            best_box = self.bboxes[0]
-                            for box in self.bboxes:
-                                if box.confidence > best_box.confidence:
-                                    best_box = box
-
+                        best_box = self.filter_boxes(self.bboxes, self.target_class)
+                        if best_box is not None:
                             pos = self.get_relative_target_coords_fixed_drone([best_box.coords])
                             dist_to_car = pos[0][1]
 
-                            if dist_to_car > 2:
-                                dist_to_car = 2
+                            if dist_to_car > 3:
+                                dist_to_car = 3
 
-                            pid_out = pos_pid.update(dist_to_car)
+                            pid_out = pos_pid.update(dist_to_car-pos_setpoint)
+                            if abs(pid_out) < 10:
+                                self.beep.pos_state = 2
+                            else:
+                                self.beep.pos_state = 1
                             print('car pos is: ', end='')
                             print(pos)
                             print('Pos PID: %s'%pid_out)
                             self.send_command(cmd='v', arg=(float(-pid_out), float(dt)))
+                        else:
+                            self.beep.pos_state = 0
+
+    def filter_boxes(self, boxes, target_class):
+        """Choose best box in target_class."""
+        best_box = None
+        for box in boxes:
+            if box.classification == target_class:
+                if best_box is None or box.confidence > best_box.confidence:
+                    best_box = box
+        return best_box
 
 
     def camera_thread(self):
@@ -472,7 +499,46 @@ class PID():
             return 0
 
 
+class Beeper():
+    """
+    Controls the beeping patterns of the quadcopter.
 
+    The idea is that there should be different alerts for different states
+    of searching. This is realized using a thread that polls the status
+    variables in the classsand sends beep commands at regular intervals.
+    These variables should be modified from the respective loops responsible
+    for control.
+    """
+    angle_state = 0  # 0: searching, 1: target found, 2: target locked
+    pos_state = 0  # 0: searching, 1: target found, 2: target locked
+    active = True
+    parent_ = None
+
+    def __init__(self, parent):
+        """
+        Constructor.
+
+        Constructor takes parent UI window as parameter since it
+        controls the connection to the quadcopter.
+        """
+        self.parent_ = parent
+        threading.Thread(target=self.beep_control, daemon=True).start()
+
+    def beep_control(self):
+        """Loop that polls state and plays appropriate beeps."""
+        while True:
+            if self.active:
+                if self.angle_state == 2 and self.pos_state == 2:
+                    self.parent_.send_command(cmd='q', arg=(2500.0, 0.5))
+                    time.sleep(0.6)
+                elif self.angle_state == 0 and self.pos_state == 0:
+                    self.parent_.send_command(cmd='q', arg=(1600.0, 0.1))
+                    time.sleep(2)
+                else:
+                    self.parent_.send_command(cmd='q', arg=(2500.0, 0.1))
+                    time.sleep(0.2)
+                    self.parent_.send_command(cmd='q', arg=(2500.0, 0.1))
+                    time.sleep(1)
 
 if __name__ == "__main__":
     import sys
